@@ -1,0 +1,100 @@
+# ── Claude / AI tooling ──────────────────────────────────────────────────────
+CLAUDE.md
+docs/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+wheels/
+
+# ── Testing / coverage ───────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# ── Secrets / environment vars ────────────────────────────────────────────────
+.env
+.env.*
+*.env
+secrets.py
+secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── Node / frontend build ─────────────────────────────────────────────────────
+mlviz/frontend/node_modules/
+mlviz/frontend/.vite/
+mlviz/frontend/.env.local
+mlviz/frontend/.env.*.local
+
+# NOTE: mlviz/frontend/dist/ is intentionally NOT ignored.
+# The built React bundle ships inside the Python package.
+
+# ── Obsidian workspace config (personal, not project docs) ───────────────────
+ML-visualizer-documentation/.obsidian/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ── ML artefacts (serialised models / arrays — can be large or leak train data)
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.npy
+*.npz
+models/
+checkpoints/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Anaconda local-prefix envs ────────────────────────────────────────────────
+# Only relevant if you run: conda create --prefix ./env
+# (NN-crew is managed globally, so this is just a safety net)
+conda-meta/
+envs/
+pkgs/
+
+# ── Temp / scratch ────────────────────────────────────────────────────────────
+tmp/
+temp/
+scratch/
+*.tmp
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
