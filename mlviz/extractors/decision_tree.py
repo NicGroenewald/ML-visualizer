@@ -50,3 +50,26 @@ def _trace_path(tree, feature_names, X):
         "prediction": int(tree.value[node][0].argmax()),
     })
     return path
+
+
+def serialize(model, X_train, y_train, query=None, feature_names=None):
+    if feature_names is not None:
+        names = list(feature_names)
+    elif hasattr(model, "feature_names_in_"):
+        names = list(model.feature_names_in_)
+    elif hasattr(X_train, "columns"):
+        names = list(X_train.columns)
+    else:
+        names = [f"x{i}" for i in range(X_train.shape[1])]
+
+    tree = model.tree_
+    nodes = _extract_tree(tree, names)
+    path = _trace_path(tree, names, query) if query is not None else None
+
+    return {
+        "model_type": "decision_tree",
+        "classes": model.classes_.tolist(),
+        "feature_names": names,
+        "nodes": nodes,
+        "path": path,
+    }
