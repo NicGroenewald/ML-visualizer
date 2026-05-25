@@ -26,3 +26,27 @@ def _extract_tree(tree, feature_names):
             })
         nodes.append(node)
     return nodes
+
+
+def _trace_path(tree, feature_names, X):
+    node = 0
+    path = []
+    while tree.children_left[node] != -1:
+        feat = tree.feature[node]
+        thr = tree.threshold[node]
+        went_left = bool(X[feat] <= thr)
+        path.append({
+            "node_id": node,
+            "feature": feature_names[feat],
+            "threshold": round(float(thr), 3),
+            "value": float(X[feat]),
+            "went_left": went_left,
+        })
+        node = int(tree.children_left[node] if went_left else tree.children_right[node])
+    path.append({
+        "node_id": node,
+        "leaf": True,
+        "counts": tree.value[node][0].astype(int).tolist(),
+        "prediction": int(tree.value[node][0].argmax()),
+    })
+    return path
