@@ -1,0 +1,132 @@
+{
+  "nodes": [
+    {
+      "id": "user",
+      "type": "text",
+      "text": "**User Code**\n```python\nvisualize(\n  model,\n  X_train, y_train,\n  query=X_test[0]\n)```",
+      "x": -820,
+      "y": -60,
+      "width": 220,
+      "height": 140
+    },
+    {
+      "id": "overview",
+      "type": "file",
+      "file": "mlviz Overview.md",
+      "x": -280,
+      "y": -320,
+      "width": 260,
+      "height": 100
+    },
+    {
+      "id": "arch",
+      "type": "file",
+      "file": "Architecture.md",
+      "x": -280,
+      "y": -180,
+      "width": 260,
+      "height": 80
+    },
+    {
+      "id": "dt_theory",
+      "type": "file",
+      "file": "Decision Tree.md",
+      "x": -280,
+      "y": 200,
+      "width": 260,
+      "height": 80
+    },
+    {
+      "id": "extractor",
+      "type": "file",
+      "file": "Extractor - DT.md",
+      "x": -280,
+      "y": -40,
+      "width": 260,
+      "height": 80
+    },
+    {
+      "id": "server",
+      "type": "file",
+      "file": "Server.md",
+      "x": 80,
+      "y": -40,
+      "width": 260,
+      "height": 80
+    },
+    {
+      "id": "frontend",
+      "type": "file",
+      "file": "Frontend.md",
+      "x": 440,
+      "y": -40,
+      "width": 260,
+      "height": 80
+    },
+    {
+      "id": "browser",
+      "type": "text",
+      "text": "**Browser Tab**\nTree diagram\nPath highlighted",
+      "x": 800,
+      "y": -40,
+      "width": 200,
+      "height": 80
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-user-extractor",
+      "fromNode": "user",
+      "fromSide": "right",
+      "toNode": "extractor",
+      "toSide": "left",
+      "label": "visualize() calls serialize()"
+    },
+    {
+      "id": "e-extractor-server",
+      "fromNode": "extractor",
+      "fromSide": "right",
+      "toNode": "server",
+      "toSide": "left",
+      "label": "JSON payload"
+    },
+    {
+      "id": "e-server-frontend",
+      "fromNode": "server",
+      "fromSide": "right",
+      "toNode": "frontend",
+      "toSide": "left",
+      "label": "GET /api/tree"
+    },
+    {
+      "id": "e-frontend-browser",
+      "fromNode": "frontend",
+      "fromSide": "right",
+      "toNode": "browser",
+      "toSide": "left",
+      "label": "renders"
+    },
+    {
+      "id": "e-dt-extractor",
+      "fromNode": "dt_theory",
+      "fromSide": "top",
+      "toNode": "extractor",
+      "toSide": "bottom",
+      "label": "tree_ arrays"
+    },
+    {
+      "id": "e-overview-arch",
+      "fromNode": "overview",
+      "fromSide": "bottom",
+      "toNode": "arch",
+      "toSide": "top"
+    },
+    {
+      "id": "e-arch-extractor",
+      "fromNode": "arch",
+      "fromSide": "bottom",
+      "toNode": "extractor",
+      "toSide": "top"
+    }
+  ]
+}
