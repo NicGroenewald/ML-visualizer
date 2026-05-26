@@ -50,7 +50,7 @@ No Node.js is needed at runtime — only at build time by the mlviz developer.
 
 ## Status
 
-Not started — implemented after the server is working. Frontend development is session 3+.
+Complete — built in Session 3.
 
 ## What was built
 

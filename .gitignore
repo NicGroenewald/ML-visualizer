@@ -92,6 +92,8 @@ tmp/
 temp/
 scratch/
 *.tmp
+demo_run.py
+tests/integration_e2e.py
 
 # ── IDEs ──────────────────────────────────────────────────────────────────────
 .vscode/
