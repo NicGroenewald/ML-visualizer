@@ -35,8 +35,7 @@ KNN, Random Forest, and SVM are planned for later versions.
 
 - Python 3.10+
 - scikit-learn
-- numpy / pandas (already in most ML environments)
-- FastAPI + uvicorn (for the local server — install separately if needed)
+- FastAPI + uvicorn
 
 ---
 
@@ -47,14 +46,28 @@ KNN, Random Forest, and SVM are planned for later versions.
 git clone <repo-url>
 cd ML-visualizer
 
-# Activate your environment (project uses conda NN-crew)
-conda activate NN-crew
+# Create and activate a virtual environment (or use your existing ML env)
+python -m venv .venv
+source .venv/bin/activate      # macOS/Linux
+# .venv\Scripts\activate       # Windows
+
+# Install dependencies
+pip install fastapi uvicorn scikit-learn httpx pytest
+
+# Install mlviz in editable mode so imports resolve from anywhere
+pip install -e .
 
 # Run the test suite
-conda run -n NN-crew pytest tests/ -v
+pytest tests/ -v
 ```
 
-All 9 tests should pass.
+All 14 tests should pass.
+
+---
+
+## Try it out
+
+Open `demo.ipynb` in VS Code or Jupyter. It has ready-to-run examples using iris, wine, and breast-cancer datasets, plus an empty cell at the bottom for your own model.
 
 ---
 
@@ -62,15 +75,17 @@ All 9 tests should pass.
 
 ```
 mlviz/
-├── __init__.py               ← visualize() entry point (next session)
+├── __init__.py               ← visualize() entry point
 ├── extractors/
-│   └── decision_tree.py      ← reads model.tree_, serialises to JSON ✅
+│   └── decision_tree.py      ← reads model.tree_, serialises to JSON
 ├── server/
-│   └── app.py                ← FastAPI server (next session)
-└── frontend/                 ← React + Vite visualiser (later)
+│   └── app.py                ← FastAPI server, serves JSON + React app
+└── frontend/
+    ├── src/                  ← React + Vite source
+    └── dist/                 ← built bundle (ships with package)
 
-tests/
-└── test_decision_tree_extractor.py   ← 9 tests, all passing ✅
+tests/                        ← 14 tests, all passing
+demo.ipynb                    ← interactive examples notebook
 ```
 
 ---
@@ -90,12 +105,12 @@ The JSON the extractor produces looks like this:
 ```json
 {
   "model_type": "decision_tree",
-  "classes": [0, 1, 2],
-  "feature_names": ["petal length (cm)", "petal width (cm)", ...],
+  "classes": ["setosa", "versicolor", "virginica"],
+  "feature_names": ["petal length (cm)", "petal width (cm)"],
   "nodes": [
     { "node_id": 0, "feature": "petal length (cm)", "threshold": 2.45,
       "n_samples": 150, "gini": 0.667, "left_child": 1, "right_child": 2, "leaf": false },
-    { "node_id": 1, "leaf": true, "counts": [50, 0, 0], "prediction": 0, ... }
+    { "node_id": 1, "leaf": true, "counts": [50, 0, 0], "prediction": 0 }
   ],
   "path": [
     { "node_id": 0, "feature": "petal length (cm)", "threshold": 2.45,
@@ -112,11 +127,12 @@ The JSON the extractor produces looks like this:
 | Component | Status |
 |-----------|--------|
 | Package scaffold | ✅ done |
-| `extractors/decision_tree.py` | ✅ done — 9 tests passing |
-| `server/app.py` (FastAPI) | 🔲 next |
-| `mlviz/__init__.py` (`visualize()`) | 🔲 next |
-| `frontend/` (React tree diagram) | 🔲 later |
-| `frontend/` (path highlighting) | 🔲 later |
+| `extractors/decision_tree.py` | ✅ done — 14 tests passing |
+| `server/app.py` (FastAPI) | ✅ done |
+| `mlviz/__init__.py` (`visualize()`) | ✅ done |
+| `frontend/` (React tree diagram) | ✅ done |
+| `frontend/` (path highlighting) | ✅ done |
+| Installable package (`pip install`) | 🔲 next |
 
 ---
 
