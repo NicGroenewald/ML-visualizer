@@ -1,6 +1,6 @@
 ---
 tags: [mlviz, python, v1, frontend, react]
-status: not-started
+status: complete
 ---
 
 # Frontend (`frontend/`)
@@ -51,6 +51,22 @@ No Node.js is needed at runtime — only at build time by the mlviz developer.
 ## Status
 
 Not started — implemented after the server is working. Frontend development is session 3+.
+
+## What was built
+
+`mlviz/frontend/src/MLVizTree.jsx` — presentational component:
+- SVG tree rendered from flat node list using leaf-counting layout algorithm
+- Apple HIG design tokens — system grey background, white surfaces, SF Mono for code
+- Path highlighting via Set<node_id> — blue fill + border on nodes, blue strokes on edges
+- Floating tooltip on hover showing gini, samples, class counts per node
+- Path bar at bottom (only when `data.path` is not null) showing each split question, query value, and prediction badge
+
+`mlviz/frontend/src/App.jsx` — data owner:
+- Fetches `GET /api/tree` on mount
+- Three states: loading / error / ready
+- Passes data down to `MLVizTree` as a single prop
+
+Built with `npm run build` → `dist/` served as static files by FastAPI.
 
 ## Related Notes
 
