@@ -1,7 +1,7 @@
 def _extract_tree(tree, feature_names):
     nodes = []
     for i in range(tree.node_count):
-        is_leaf = tree.children_left[i] == -1
+        is_leaf = bool(tree.children_left[i] == -1)
         node = {
             "node_id": i,
             "n_samples": int(tree.n_node_samples[i]),
