@@ -1,6 +1,6 @@
 ---
 tags: [mlviz, python, v1, server, fastapi]
-status: not-started
+status: complete
 ---
 
 # Server (`server/app.py`)
@@ -39,6 +39,24 @@ A random available port is selected at startup using `socket.bind(('', 0))`. The
 ## Status
 
 Not started — implemented in the session after the extractor is complete and tested.
+
+## What was built
+
+`create_app(payload)` factory in `mlviz/server/app.py`:
+- Accepts the pre-serialised payload dict at construction time
+- `GET /api/tree` returns it directly (no re-computation)
+- Mounts `mlviz/frontend/dist/` as static files if the directory exists
+- Each call to `create_app` produces an isolated app instance — payloads don't bleed between calls
+
+`visualize()` in `mlviz/__init__.py`:
+- Validates model type (NotImplementedError) and fitted state (ValueError) before doing any work
+- Calls `serialize()` from `extractors/decision_tree.py`
+- Starts uvicorn in a daemon thread (non-blocking — notebook cells complete normally)
+- Polls the port until the server accepts connections before opening the browser
+
+## Bug fixed during integration
+
+`_extract_tree` was returning `numpy.bool_` for the `leaf` field — FastAPI's JSON encoder can't serialize numpy scalars. Fixed by wrapping `bool()` around the comparison. All 9 Session 1 tests still pass.
 
 ## Related Notes
 

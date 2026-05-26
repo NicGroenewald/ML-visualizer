@@ -36,5 +36,6 @@ Decision Tree only. KNN, Random Forest, and SVM are planned for later versions.
 |--------|--------|
 | Project scaffold | ✅ complete |
 | `extractors/decision_tree.py` | ✅ complete — 9 tests passing |
-| `server/app.py` | 🔲 next session |
-| `frontend/` | 🔲 pending |
+| `server/app.py` | ✅ complete — 2 tests passing |
+| `mlviz/__init__.py` (visualize) | ✅ complete — 3 tests passing |
+| `frontend/` | 🔲 next session |
