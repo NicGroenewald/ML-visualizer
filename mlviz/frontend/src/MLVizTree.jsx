@@ -59,8 +59,9 @@ function computeLayout(nodes) {
     n.cy = n.py + NH / 2;
   });
 
-  const svgW = Math.max(...Object.values(map).map((n) => n.px)) + NW + HP;
-  const svgH = Math.max(...Object.values(map).map((n) => n._d)) * LH + NH + VP * 2;
+  const allNodes = Object.values(map);
+  const svgW = (allNodes.length ? Math.max(...allNodes.map((n) => n.px)) : 0) + NW + HP;
+  const svgH = (allNodes.length ? Math.max(...allNodes.map((n) => n._d)) : 0) * LH + NH + VP * 2;
 
   return { map, svgW, svgH };
 }
@@ -123,7 +124,7 @@ function Tooltip({ node, map, classes }) {
           {classes.map((c) => (
             <div key={c} style={{ display: "flex", justifyContent: "space-between", padding: "2.5px 0" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: CLASS_DOT[c], display: "inline-block" }} />
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: CLASS_DOT[classes.indexOf(c)], display: "inline-block" }} />
                 class {c}
               </span>
               <span style={{ fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace', color: T.text }}>
@@ -217,14 +218,14 @@ export default function MLVizTree({ data }) {
         <span style={{ fontSize: 15, fontWeight: 600, color: T.text, letterSpacing: "-0.3px" }}>
           mlviz
         </span>
-        <Pill>{data.model_type.replace("_", " ")}</Pill>
+        <Pill>{data.model_type.replace(/_/g, " ")}</Pill>
         <Pill>
           {data.nodes.length} nodes · {data.nodes.filter((n) => n.leaf).length} leaves
         </Pill>
         <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
           {data.classes.map((c) => (
             <div key={c} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: CLASS_DOT[c], display: "inline-block" }} />
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: CLASS_DOT[data.classes.indexOf(c)], display: "inline-block" }} />
               class {c}
             </div>
           ))}
@@ -268,7 +269,7 @@ export default function MLVizTree({ data }) {
           {Object.values(map).map((n) => {
             const act = pathIds.has(n.node_id);
             const hov = hoveredNode?.node_id === n.node_id;
-            const p   = n.prediction;
+            const p   = n.leaf ? n.prediction : null;
 
             const fill   = n.leaf ? (act ? CLASS_FILL[p]  : T.surface) : (act ? T.blueFill : T.surface);
             const stroke = n.leaf ? (act ? CLASS_BORDER[p] : hov ? T.borderHover : T.border)
