@@ -20,9 +20,9 @@ const T = {
   orangeFill:       "#FFF4E5",
 };
 
-const CLASS_DOT    = [T.blue,     T.green,      T.orange];
-const CLASS_FILL   = [T.blueFill, T.greenFill,  "#FFF4E5"];
-const CLASS_BORDER = [T.blue,     T.green,      T.orange];
+const CLASS_DOT    = [T.blue,     T.green,      T.orange,    "#AF52DE", "#FF375F", "#00C7BE"];
+const CLASS_FILL   = [T.blueFill, T.greenFill,  "#FFF4E5",   "#F5EFFE", "#FFF0F3", "#E6FAFA"];
+const CLASS_BORDER = [T.blue,     T.green,      T.orange,    "#AF52DE", "#FF375F", "#00C7BE"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const sf = (f) => f ? f.replace(" (cm)", "") : "";
@@ -116,19 +116,19 @@ function Tooltip({ node, map, classes }) {
             display: "flex", alignItems: "center", gap: 6,
           }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: CLASS_DOT[p], display: "inline-block", flexShrink: 0 }} />
-            class {p}
+            {classes[p]}
           </div>
           <TRow label="gini impurity" value={node.gini.toFixed(3)} />
           <TRow label="samples" value={node.n_samples} />
           <div style={{ height: "0.5px", background: "#E5E5EA", margin: "8px 0" }} />
-          {classes.map((c) => (
+          {classes.map((c, idx) => (
             <div key={c} style={{ display: "flex", justifyContent: "space-between", padding: "2.5px 0" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: CLASS_DOT[classes.indexOf(c)], display: "inline-block" }} />
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: CLASS_DOT[idx], display: "inline-block" }} />
                 class {c}
               </span>
               <span style={{ fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace', color: T.text }}>
-                {node.counts?.[c] ?? 0}
+                {node.counts?.[idx] ?? 0}
               </span>
             </div>
           ))}
@@ -296,7 +296,7 @@ export default function MLVizTree({ data }) {
                       fill={act ? T.text : T.textSecondary}
                       fontFamily="-apple-system, sans-serif"
                     >
-                      class {p}
+                      {data.classes[p]}
                     </text>
                   </>
                 ) : (
@@ -370,7 +370,7 @@ export default function MLVizTree({ data }) {
                 borderRadius: 7, padding: "3px 11px",
                 color: CLASS_BORDER[leafStep.prediction],
               }}>
-                class {leafStep.prediction}
+                {data.classes[leafStep.prediction]}
               </span>
             </>
           )}
