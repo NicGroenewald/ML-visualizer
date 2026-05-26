@@ -34,6 +34,8 @@ function computeLayout(nodes) {
   const map = {};
   nodes.forEach((n) => { map[n.node_id] = { ...n }; });
 
+  if (nodes.length === 0) return { map: {}, svgW: 0, svgH: 0 };
+
   let leafCount = 0;
   function setX(id) {
     const n = map[id];
@@ -112,10 +114,10 @@ function Tooltip({ node, map, classes }) {
       {node.leaf ? (
         <>
           <div style={{
-            fontSize: 13, fontWeight: 500, color: CLASS_DOT[p], marginBottom: 10,
+            fontSize: 13, fontWeight: 500, color: CLASS_DOT[p] ?? "#8E8E93", marginBottom: 10,
             display: "flex", alignItems: "center", gap: 6,
           }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: CLASS_DOT[p], display: "inline-block", flexShrink: 0 }} />
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: CLASS_DOT[p] ?? "#8E8E93", display: "inline-block", flexShrink: 0 }} />
             {classes[p]}
           </div>
           <TRow label="gini impurity" value={node.gini.toFixed(3)} />
@@ -124,7 +126,7 @@ function Tooltip({ node, map, classes }) {
           {classes.map((c, idx) => (
             <div key={c} style={{ display: "flex", justifyContent: "space-between", padding: "2.5px 0" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: CLASS_DOT[idx], display: "inline-block" }} />
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: CLASS_DOT[idx] ?? "#8E8E93", display: "inline-block" }} />
                 class {c}
               </span>
               <span style={{ fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace', color: T.text }}>
@@ -218,14 +220,14 @@ export default function MLVizTree({ data }) {
         <span style={{ fontSize: 15, fontWeight: 600, color: T.text, letterSpacing: "-0.3px" }}>
           mlviz
         </span>
-        <Pill>{data.model_type.replace(/_/g, " ")}</Pill>
+        <Pill>{(data.model_type ?? "decision tree").replace(/_/g, " ")}</Pill>
         <Pill>
           {data.nodes.length} nodes · {data.nodes.filter((n) => n.leaf).length} leaves
         </Pill>
         <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
-          {data.classes.map((c) => (
-            <div key={c} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: CLASS_DOT[data.classes.indexOf(c)], display: "inline-block" }} />
+          {data.classes.map((c, idx) => (
+            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: CLASS_DOT[idx] ?? "#8E8E93", display: "inline-block" }} />
               class {c}
             </div>
           ))}
@@ -246,7 +248,7 @@ export default function MLVizTree({ data }) {
             const midY = (e.from.py + NH + e.to.py) / 2;
             const lx   = (e.from.cx + e.to.cx) / 2;
             return (
-              <g key={i}>
+              <g key={`${e.from.node_id}-${e.to.node_id}`}>
                 <path
                   d={`M${e.from.cx},${e.from.py + NH} C${e.from.cx},${midY} ${e.to.cx},${midY} ${e.to.cx},${e.to.py}`}
                   fill="none"
@@ -271,9 +273,9 @@ export default function MLVizTree({ data }) {
             const hov = hoveredNode?.node_id === n.node_id;
             const p   = n.leaf ? n.prediction : null;
 
-            const fill   = n.leaf ? (act ? CLASS_FILL[p]  : T.surface) : (act ? T.blueFill : T.surface);
-            const stroke = n.leaf ? (act ? CLASS_BORDER[p] : hov ? T.borderHover : T.border)
-                                  : (act ? T.blue          : hov ? T.borderHover : T.border);
+            const fill   = n.leaf ? (act ? (CLASS_FILL[p]   ?? T.surface)  : T.surface) : (act ? T.blueFill : T.surface);
+            const stroke = n.leaf ? (act ? (CLASS_BORDER[p] ?? T.border)   : hov ? T.borderHover : T.border)
+                                  : (act ? T.blue : hov ? T.borderHover : T.border);
             const sw = act ? 1.5 : 1;
 
             return (
@@ -289,7 +291,7 @@ export default function MLVizTree({ data }) {
                 />
                 {n.leaf ? (
                   <>
-                    <circle cx={n.px + 18} cy={n.cy} r={4.5} fill={CLASS_DOT[p]} />
+                    <circle cx={n.px + 18} cy={n.cy} r={4.5} fill={CLASS_DOT[p] ?? "#8E8E93"} />
                     <text
                       x={n.px + 31} y={n.cy + 4}
                       fontSize={12} fontWeight="500"
@@ -365,10 +367,10 @@ export default function MLVizTree({ data }) {
               <span style={{ color: T.textTertiary, fontSize: 12 }}>→</span>
               <span style={{
                 fontSize: 12, fontWeight: 500,
-                background: CLASS_FILL[leafStep.prediction],
-                border: `0.5px solid ${CLASS_BORDER[leafStep.prediction]}`,
+                background: CLASS_FILL[leafStep.prediction]   ?? T.surfaceSecondary,
+                border: `0.5px solid ${CLASS_BORDER[leafStep.prediction] ?? T.border}`,
                 borderRadius: 7, padding: "3px 11px",
-                color: CLASS_BORDER[leafStep.prediction],
+                color: CLASS_BORDER[leafStep.prediction] ?? T.text,
               }}>
                 {data.classes[leafStep.prediction]}
               </span>
