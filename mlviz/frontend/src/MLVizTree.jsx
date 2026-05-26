@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 
-// ─── Design tokens (Apple HIG) ────────────────────────────────────────────────
-const T = {
+// ─── Design tokens (Apple HIG light + dark) ───────────────────────────────────
+const LIGHT = {
   bg:               "#F2F2F7",
   surface:          "#FFFFFF",
   surfaceSecondary: "#F2F2F7",
@@ -10,19 +10,38 @@ const T = {
   text:             "#1C1C1E",
   textSecondary:    "#8E8E93",
   textTertiary:     "#AEAEB2",
-  separator:        "#F2F2F7",
+  separator:        "#E5E5EA",
   blue:             "#007AFF",
   blueFill:         "#EBF5FF",
-  blueBorder:       "#007AFF",
   green:            "#34C759",
   greenFill:        "#EEFBF1",
   orange:           "#FF9F0A",
   orangeFill:       "#FFF4E5",
+  red:              "#FF3B30",
+  classFill: ["#EBF5FF", "#EEFBF1", "#FFF4E5", "#F5EFFE", "#FFF0F3", "#E6FAFA"],
 };
 
-const CLASS_DOT    = [T.blue,     T.green,      T.orange,    "#AF52DE", "#FF375F", "#00C7BE"];
-const CLASS_FILL   = [T.blueFill, T.greenFill,  "#FFF4E5",   "#F5EFFE", "#FFF0F3", "#E6FAFA"];
-const CLASS_BORDER = [T.blue,     T.green,      T.orange,    "#AF52DE", "#FF375F", "#00C7BE"];
+const DARK = {
+  bg:               "#000000",
+  surface:          "#1C1C1E",
+  surfaceSecondary: "#2C2C2E",
+  border:           "#48484A",
+  borderHover:      "#AEAEB2",
+  text:             "#FFFFFF",
+  textSecondary:    "#AEAEB2",
+  textTertiary:     "#636366",
+  separator:        "#38383A",
+  blue:             "#0A84FF",
+  blueFill:         "#001E3C",
+  green:            "#30D158",
+  greenFill:        "#0A2A10",
+  orange:           "#FF9F0A",
+  orangeFill:       "#2A1500",
+  red:              "#FF453A",
+  classFill: ["#001E3C", "#0A2A10", "#2A1500", "#1A0030", "#30000E", "#002020"],
+};
+
+const CLASS_COLORS = ["#007AFF", "#34C759", "#FF9F0A", "#AF52DE", "#FF375F", "#00C7BE"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const sf = (f) => f ? f.replace(" (cm)", "") : "";
@@ -69,7 +88,7 @@ function computeLayout(nodes) {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-function Pill({ children }) {
+function Pill({ children, T }) {
   return (
     <span style={{
       fontSize: 11, padding: "3px 10px", borderRadius: 20,
@@ -81,7 +100,7 @@ function Pill({ children }) {
   );
 }
 
-function TRow({ label, value, mono = true }) {
+function TRow({ label, value, mono = true, T }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2.5px 0" }}>
       <span style={{ fontSize: 11, color: T.textSecondary }}>{label}</span>
@@ -92,13 +111,13 @@ function TRow({ label, value, mono = true }) {
   );
 }
 
-function Tooltip({ node, map, classes }) {
+function Tooltip({ node, map, classes, T, classDot, classFill }) {
   if (!node) return null;
   const p = node.prediction;
   return (
     <div style={{
       background: T.surface,
-      border: `0.5px solid #E5E5EA`,
+      border: `0.5px solid ${T.separator}`,
       borderRadius: 13,
       padding: "13px 15px",
       minWidth: 182,
@@ -114,19 +133,27 @@ function Tooltip({ node, map, classes }) {
       {node.leaf ? (
         <>
           <div style={{
-            fontSize: 13, fontWeight: 500, color: CLASS_DOT[p] ?? "#8E8E93", marginBottom: 10,
-            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 13, fontWeight: 500, color: classDot[p] ?? T.textSecondary,
+            marginBottom: 10, display: "flex", alignItems: "center", gap: 6,
           }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: CLASS_DOT[p] ?? "#8E8E93", display: "inline-block", flexShrink: 0 }} />
+            <span style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: classDot[p] ?? T.textSecondary,
+              display: "inline-block", flexShrink: 0,
+            }} />
             {classes[p]}
           </div>
-          <TRow label="gini impurity" value={node.gini.toFixed(3)} />
-          <TRow label="samples" value={node.n_samples} />
-          <div style={{ height: "0.5px", background: "#E5E5EA", margin: "8px 0" }} />
+          <TRow label="gini impurity" value={node.gini.toFixed(3)} T={T} />
+          <TRow label="samples"       value={node.n_samples}        T={T} />
+          <div style={{ height: "0.5px", background: T.separator, margin: "8px 0" }} />
           {classes.map((c, idx) => (
             <div key={c} style={{ display: "flex", justifyContent: "space-between", padding: "2.5px 0" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: CLASS_DOT[idx] ?? "#8E8E93", display: "inline-block" }} />
+                <span style={{
+                  width: 5, height: 5, borderRadius: "50%",
+                  background: classDot[idx] ?? T.textSecondary,
+                  display: "inline-block",
+                }} />
                 class {c}
               </span>
               <span style={{ fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace', color: T.text }}>
@@ -143,11 +170,11 @@ function Tooltip({ node, map, classes }) {
           }}>
             {sf(node.feature)} ≤ {node.threshold}
           </div>
-          <TRow label="gini impurity" value={node.gini.toFixed(3)} />
-          <TRow label="samples" value={node.n_samples} />
-          <div style={{ height: "0.5px", background: "#E5E5EA", margin: "8px 0" }} />
-          <TRow label="left branch" value={map[node.left_child]?.n_samples} />
-          <TRow label="right branch" value={map[node.right_child]?.n_samples} />
+          <TRow label="gini impurity" value={node.gini.toFixed(3)} T={T} />
+          <TRow label="samples"       value={node.n_samples}        T={T} />
+          <div style={{ height: "0.5px", background: T.separator, margin: "8px 0" }} />
+          <TRow label="left branch"  value={map[node.left_child]?.n_samples}  T={T} />
+          <TRow label="right branch" value={map[node.right_child]?.n_samples} T={T} />
         </>
       )}
     </div>
@@ -155,7 +182,12 @@ function Tooltip({ node, map, classes }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function MLVizTree({ data }) {
+export default function MLVizTree({ data, dark, toggleDark }) {
+  const T           = dark ? DARK : LIGHT;
+  const classDot    = CLASS_COLORS;
+  const classFill   = T.classFill;
+  const classBorder = CLASS_COLORS;
+
   const [hoveredNode, setHoveredNode] = useState(null);
   const [tipPos, setTipPos]           = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
@@ -220,17 +252,34 @@ export default function MLVizTree({ data }) {
         <span style={{ fontSize: 15, fontWeight: 600, color: T.text, letterSpacing: "-0.3px" }}>
           mlviz
         </span>
-        <Pill>{(data.model_type ?? "decision tree").replace(/_/g, " ")}</Pill>
-        <Pill>
+        <Pill T={T}>{(data.model_type ?? "decision tree").replace(/_/g, " ")}</Pill>
+        <Pill T={T}>
           {data.nodes.length} nodes · {data.nodes.filter((n) => n.leaf).length} leaves
         </Pill>
         <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
           {data.classes.map((c, idx) => (
             <div key={idx} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: CLASS_DOT[idx] ?? "#8E8E93", display: "inline-block" }} />
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: classDot[idx] ?? T.textSecondary, display: "inline-block" }} />
               class {c}
             </div>
           ))}
+          <button
+            onClick={toggleDark}
+            style={{
+              background: "none",
+              border: `0.5px solid ${T.border}`,
+              borderRadius: 8,
+              padding: "4px 10px",
+              cursor: "pointer",
+              fontSize: 11,
+              color: T.textSecondary,
+              letterSpacing: "0.1px",
+              marginLeft: 12,
+            }}
+            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {dark ? "☀ Light" : "☾ Dark"}
+          </button>
         </div>
       </div>
 
@@ -252,13 +301,13 @@ export default function MLVizTree({ data }) {
                 <path
                   d={`M${e.from.cx},${e.from.py + NH} C${e.from.cx},${midY} ${e.to.cx},${midY} ${e.to.cx},${e.to.py}`}
                   fill="none"
-                  stroke={e.act ? T.blue : "#3C3C43"}
+                  stroke={e.act ? T.blue : T.border}
                   strokeWidth={e.act ? 2 : 1.5}
                 />
                 <text
                   x={lx} y={midY - 4}
                   textAnchor="middle" fontSize={9}
-                  fill={e.act ? T.blue : "#6C6C70"}
+                  fill={e.act ? T.blue : T.textTertiary}
                   fontFamily="-apple-system, sans-serif"
                 >
                   {e.lbl}
@@ -273,8 +322,8 @@ export default function MLVizTree({ data }) {
             const hov = hoveredNode?.node_id === n.node_id;
             const p   = n.leaf ? n.prediction : null;
 
-            const fill   = n.leaf ? (act ? (CLASS_FILL[p]   ?? T.surface)  : T.surface) : (act ? T.blueFill : T.surface);
-            const stroke = n.leaf ? (act ? (CLASS_BORDER[p] ?? T.border)   : hov ? T.borderHover : T.border)
+            const fill   = n.leaf ? (act ? (classFill[p]   ?? T.surface)  : T.surface) : (act ? T.blueFill : T.surface);
+            const stroke = n.leaf ? (act ? (classBorder[p] ?? T.border)   : hov ? T.borderHover : T.border)
                                   : (act ? T.blue : hov ? T.borderHover : T.border);
             const sw = act ? 1.5 : 1;
 
@@ -291,7 +340,7 @@ export default function MLVizTree({ data }) {
                 />
                 {n.leaf ? (
                   <>
-                    <circle cx={n.px + 18} cy={n.cy} r={4.5} fill={CLASS_DOT[p] ?? "#8E8E93"} />
+                    <circle cx={n.px + 18} cy={n.cy} r={4.5} fill={classDot[p] ?? T.textSecondary} />
                     <text
                       x={n.px + 31} y={n.cy + 4}
                       fontSize={12} fontWeight="500"
@@ -306,7 +355,7 @@ export default function MLVizTree({ data }) {
                     x={n.cx} y={n.cy + 4}
                     textAnchor="middle"
                     fontSize={12} fontWeight={act ? "500" : "400"}
-                    fill={act ? T.blue : "#3C3C43"}
+                    fill={act ? T.blue : T.text}
                     fontFamily='"SF Mono", Menlo, "Courier New", monospace'
                   >
                     {sf(n.feature)} ≤ {n.threshold}
@@ -326,7 +375,7 @@ export default function MLVizTree({ data }) {
             pointerEvents: "none",
             zIndex: 20,
           }}>
-            <Tooltip node={hoveredNode} map={map} classes={data.classes} />
+            <Tooltip node={hoveredNode} map={map} classes={data.classes} T={T} classDot={classDot} classFill={classFill} />
           </div>
         )}
       </div>
@@ -349,12 +398,12 @@ export default function MLVizTree({ data }) {
           {pathSteps.map((s, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
               {i > 0 && <span style={{ color: T.textTertiary, fontSize: 12 }}>→</span>}
-              <span style={{ fontSize: 12, fontFamily: '"SF Mono", Menlo, monospace', color: "#3C3C43" }}>
+              <span style={{ fontSize: 12, fontFamily: '"SF Mono", Menlo, monospace', color: T.text }}>
                 {sf(s.feature)} ≤ {s.threshold}
               </span>
               <span style={{
                 fontSize: 12, fontFamily: '"SF Mono", Menlo, monospace',
-                color: s.went_left ? T.green : "#FF3B30",
+                color: s.went_left ? T.green : T.red,
                 fontWeight: 500,
               }}>
                 {s.value} → {s.went_left ? "yes" : "no"}
@@ -367,10 +416,10 @@ export default function MLVizTree({ data }) {
               <span style={{ color: T.textTertiary, fontSize: 12 }}>→</span>
               <span style={{
                 fontSize: 12, fontWeight: 500,
-                background: CLASS_FILL[leafStep.prediction]   ?? T.surfaceSecondary,
-                border: `0.5px solid ${CLASS_BORDER[leafStep.prediction] ?? T.border}`,
+                background: classFill[leafStep.prediction]   ?? T.surfaceSecondary,
+                border: `0.5px solid ${classBorder[leafStep.prediction] ?? T.border}`,
                 borderRadius: 7, padding: "3px 11px",
-                color: CLASS_BORDER[leafStep.prediction] ?? T.text,
+                color: classBorder[leafStep.prediction] ?? T.text,
               }}>
                 {data.classes[leafStep.prediction]}
               </span>
