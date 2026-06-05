@@ -52,6 +52,9 @@ mlviz/frontend/.env.*.local
 # ── Obsidian workspace config (personal, not project docs) ───────────────────
 ML-visualizer-documentation/.obsidian/
 
+# ── Session notes (personal dev diary, not for public repo) ──────────────────
+ML-visualizer-documentation/sessions/
+
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
@@ -82,6 +85,10 @@ logs/
 conda-meta/
 envs/
 pkgs/
+
+# ── Graphify (knowledge graph, generated — rebuild with /graphify .) ──────────
+graphify-out/
+.graphify_manifest.json
 
 # ── Temp / scratch ────────────────────────────────────────────────────────────
 tmp/
