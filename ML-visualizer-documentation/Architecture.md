@@ -1,6 +1,6 @@
 ---
 tags: [mlviz, python, v1, architecture]
-status: in-progress
+status: complete
 ---
 
 # Architecture
