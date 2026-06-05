@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 // ─── Design tokens (Apple HIG light + dark) ───────────────────────────────────
 const LIGHT = {
@@ -45,6 +45,8 @@ const CLASS_COLORS = ["#007AFF", "#34C759", "#FF9F0A", "#AF52DE", "#FF375F", "#0
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const sf = (f) => f ? f.replace(" (cm)", "") : "";
+const clampLabel = (s, max = 19) =>
+  s && s.length > max ? s.slice(0, max - 1) + "…" : (s ?? "");
 
 // ─── Layout algorithm ─────────────────────────────────────────────────────────
 const NW = 168, NH = 52, LH = 112, HG = 28, HP = 44, VP = 28;
@@ -190,7 +192,26 @@ export default function MLVizTree({ data, dark, toggleDark }) {
 
   const [hoveredNode, setHoveredNode] = useState(null);
   const [tipPos, setTipPos]           = useState({ x: 0, y: 0 });
+  const [zoom, setZoom]               = useState(1);
   const containerRef = useRef(null);
+
+  const { map, svgW, svgH } = useMemo(
+    () => computeLayout(data.nodes),
+    [data.nodes]
+  );
+
+  useEffect(() => {
+    if (!containerRef.current || !svgW) return;
+    const fitZoom = +Math.min(1, (containerRef.current.clientWidth - 16) / svgW).toFixed(2);
+    setZoom(fitZoom);
+  }, [svgW]);
+
+  const zoomIn  = () => setZoom((z) => +Math.min(z + 0.15, 2.5).toFixed(2));
+  const zoomOut = () => setZoom((z) => +Math.max(z - 0.15, 0.2).toFixed(2));
+  const zoomFit = () => {
+    if (!containerRef.current || !svgW) return;
+    setZoom(+Math.min(1, (containerRef.current.clientWidth - 16) / svgW).toFixed(2));
+  };
 
   const pathIds = useMemo(
     () => new Set((data.path ?? []).map((p) => p.node_id)),
@@ -205,11 +226,6 @@ export default function MLVizTree({ data, dark, toggleDark }) {
     }
     return s;
   }, [data.path]);
-
-  const { map, svgW, svgH } = useMemo(
-    () => computeLayout(data.nodes),
-    [data.nodes]
-  );
 
   const edges = useMemo(() => {
     const list = [];
@@ -263,6 +279,44 @@ export default function MLVizTree({ data, dark, toggleDark }) {
               class {c}
             </div>
           ))}
+          {/* ── Zoom controls ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button
+              onClick={zoomOut}
+              style={{
+                background: "none", border: `0.5px solid ${T.border}`, borderRadius: 6,
+                padding: "3px 9px", cursor: "pointer", fontSize: 15,
+                color: T.textSecondary, lineHeight: 1,
+              }}
+              aria-label="Zoom out"
+            >−</button>
+            <span style={{
+              fontSize: 11, color: T.textSecondary,
+              minWidth: 38, textAlign: "center",
+              fontFamily: '"SF Mono", Menlo, monospace',
+            }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={zoomIn}
+              style={{
+                background: "none", border: `0.5px solid ${T.border}`, borderRadius: 6,
+                padding: "3px 9px", cursor: "pointer", fontSize: 15,
+                color: T.textSecondary, lineHeight: 1,
+              }}
+              aria-label="Zoom in"
+            >+</button>
+            <button
+              onClick={zoomFit}
+              style={{
+                background: "none", border: `0.5px solid ${T.border}`, borderRadius: 6,
+                padding: "3px 8px", cursor: "pointer", fontSize: 11,
+                color: T.textSecondary, letterSpacing: "0.1px",
+              }}
+              aria-label="Fit to screen"
+            >fit</button>
+          </div>
+
           <button
             onClick={toggleDark}
             style={{
@@ -290,7 +344,12 @@ export default function MLVizTree({ data, dark, toggleDark }) {
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHoveredNode(null)}
       >
-        <svg width={svgW} height={svgH} style={{ display: "block" }}>
+        <svg
+          width={Math.round(svgW * zoom)}
+          height={Math.round(svgH * zoom)}
+          viewBox={`0 0 ${svgW} ${svgH}`}
+          style={{ display: "block" }}
+        >
 
           {/* Edges */}
           {edges.map((e, i) => {
@@ -358,7 +417,7 @@ export default function MLVizTree({ data, dark, toggleDark }) {
                     fill={act ? T.blue : T.text}
                     fontFamily='"SF Mono", Menlo, "Courier New", monospace'
                   >
-                    {sf(n.feature)} ≤ {n.threshold}
+                    {clampLabel(`${sf(n.feature)} ≤ ${n.threshold}`)}
                   </text>
                 )}
               </g>
@@ -370,7 +429,7 @@ export default function MLVizTree({ data, dark, toggleDark }) {
         {hoveredNode && (
           <div style={{
             position: "absolute",
-            left: Math.min(tipPos.x + 18, svgW - 200),
+            left: Math.min(tipPos.x + 18, svgW * zoom - 200),
             top: Math.max(tipPos.y - 140, 8),
             pointerEvents: "none",
             zIndex: 20,
