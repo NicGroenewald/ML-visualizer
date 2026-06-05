@@ -50,24 +50,42 @@ No Node.js is needed at runtime — only at build time by the mlviz developer.
 
 ## Status
 
-Complete — built in Session 3.
+Complete — Session 3 (tree + path), Session 4 (dark mode), Session 5 (zoom + label truncation).
 
 ## What was built
 
 `mlviz/frontend/src/MLVizTree.jsx` — presentational component:
 - SVG tree rendered from flat node list using leaf-counting layout algorithm
-- Apple HIG design tokens — system grey background, white surfaces, SF Mono for code
-- Path highlighting via Set<node_id> — blue fill + border on nodes, blue strokes on edges
+- Apple HIG design tokens — `LIGHT` and `DARK` token objects, resolved per mode at render time
+- Path highlighting via `Set<node_id>` — blue fill + border on active nodes, blue strokes on edges
 - Floating tooltip on hover showing gini, samples, class counts per node
-- Path bar at bottom (only when `data.path` is not null) showing each split question, query value, and prediction badge
+- Path bar at bottom (only when `data.path` is not null)
+- **Dark mode** — `LIGHT`/`DARK` token objects, toggled via button, persisted to `localStorage`, OS preference detected on first load
+- **Zoom controls** — `+` / `−` / `fit` buttons in header; SVG uses `viewBox` so all coordinates stay unscaled; auto-fits to container width on mount via `useEffect`
+- **Label truncation** — `clampLabel(str, max=19)` applied to split node text; full label always visible in tooltip
 
 `mlviz/frontend/src/App.jsx` — data owner:
 - Fetches `GET /api/tree` on mount
-- Three states: loading / error / ready
-- Passes data down to `MLVizTree` as a single prop
+- Three states: loading / error / ready (all three respect dark mode)
+- Owns `dark` state and `toggleDark` callback, passed down to `MLVizTree`
+- `initDark()` reads `localStorage` on mount, falls back to `prefers-color-scheme`
 
-Built with `npm run build` → `dist/` served as static files by FastAPI.
+Built with `npm run build` → `dist/` served as static files by FastAPI. 14 tests passing.
+
+## Design Token System
+
+Two token objects replace the original single `T` constant:
+
+```js
+const LIGHT = { bg, surface, text, ... , classFill: [...] }
+const DARK  = { bg, surface, text, ... , classFill: [...] }
+```
+
+Inside the component: `const T = dark ? DARK : LIGHT`. All sub-components (`Pill`, `TRow`, `Tooltip`) receive `T` as a prop so they react to mode changes.
+
+Class accent colours (`CLASS_COLORS`) are always the same saturated values — only the fill backgrounds differ between light and dark.
 
 ## Related Notes
 
 - [[Server]] — provides the JSON this frontend fetches
+- [[Architecture]] — how the frontend fits into the full call sequence

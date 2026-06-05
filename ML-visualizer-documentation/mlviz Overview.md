@@ -1,6 +1,6 @@
 ---
 tags: [mlviz, python, v1]
-status: in-progress
+status: complete
 ---
 
 # mlviz — ML Model Visualizer
@@ -38,4 +38,4 @@ Decision Tree only. KNN, Random Forest, and SVM are planned for later versions.
 | `extractors/decision_tree.py` | ✅ complete — 9 tests passing |
 | `server/app.py` | ✅ complete — 2 tests passing |
 | `mlviz/__init__.py` (visualize) | ✅ complete — 3 tests passing |
-| `frontend/` | 🔲 next session |
+| `frontend/` | ✅ complete — dark mode, zoom controls, label truncation |

@@ -122,17 +122,15 @@ The JSON the extractor produces looks like this:
 
 ---
 
-## Build progress
+## Roadmap
 
-| Component | Status |
-|-----------|--------|
-| Package scaffold | ✅ done |
-| `extractors/decision_tree.py` | ✅ done — 14 tests passing |
-| `server/app.py` (FastAPI) | ✅ done |
-| `mlviz/__init__.py` (`visualize()`) | ✅ done |
-| `frontend/` (React tree diagram) | ✅ done |
-| `frontend/` (path highlighting) | ✅ done |
-| Installable package (`pip install`) | 🔲 next |
+V1 ships a fully working Decision Tree visualizer — the core loop (extract → serve → render) is solid, and the frontend renders arbitrary tree depths with zoom controls, dark mode, and decision path highlighting.
+
+Planned next:
+
+- **More model types** — Random Forest, KNN, and SVM extractors, each with a model-appropriate frontend
+- **Learning mode** — inline explanations of what the model is actually doing at each step: what Gini impurity measures, why a split happens where it does, what the class distribution in a leaf tells you about confidence
+- **Installable package** — `pip install mlviz` once the model set is broad enough to be worth distributing
 
 ---
 

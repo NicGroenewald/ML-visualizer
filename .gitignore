@@ -104,3 +104,6 @@ tests/integration_e2e.py
 *.swp
 *.swo
 *~
+
+# ── Browser automation (Playwright MCP verification runs) ─────────────────────
+.playwright-mcp/
