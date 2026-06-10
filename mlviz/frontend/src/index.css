@@ -1,10 +1,38 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body, #root { height: 100%; }
+
 body {
-  background: #F2F2F7;
+  background: #09090B;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   transition: background-color 0.15s ease;
 }
 
-div, span, button {
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+::selection { background: rgba(123, 134, 226, 0.35); }
+
+/* Slim scrollbars, tool-like */
+* { scrollbar-width: thin; scrollbar-color: #3a3a40 transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #3a3a40; border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes mlviz-pulse {
+  0%, 100% { transform: scale(0.6); opacity: 0.4; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+button {
+  font-family: inherit;
+  transition: background-color 120ms ease-out, color 120ms ease-out,
+              border-color 120ms ease-out, opacity 120ms ease-out;
+}
+button:active { opacity: 0.6; }
+
+.zoom-btn { transition: opacity 120ms ease-out; }
+.zoom-btn:active { opacity: 0.6; }
+
+@media (prefers-reduced-motion: reduce) {
+  button, .zoom-btn { transition: none; }
+  .mlviz-loading-dot { animation: none !important; }
 }

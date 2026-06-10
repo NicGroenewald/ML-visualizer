@@ -1,6 +1,10 @@
 # ── Claude / AI tooling ──────────────────────────────────────────────────────
 CLAUDE.md
 docs/
+docs/superpowers
+docs/superpowers/specs
+AGENTS.md
+.superpowers
 
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
