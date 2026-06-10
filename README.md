@@ -1,138 +1,243 @@
 # mlviz — ML Model Visualizer
 
-A Python library that takes a real trained scikit-learn model and your real training data, then opens an interactive browser visualisation showing exactly how the model thinks.
+`mlviz` is a Python library that takes a trained scikit-learn model, spins up a local viewer, and opens an interactive browser UI so you can inspect how the model makes decisions.
+
+Right now it supports:
+
+- `sklearn.tree.DecisionTreeClassifier`
+- `sklearn.ensemble.RandomForestClassifier`
+
+You get the actual model structure, not a fake mock-up. If you pass a query point, `mlviz` also shows the exact path that sample took through the model.
+
+## Quick start
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.tree import DecisionTreeClassifier
 from mlviz import visualize
 
-model.fit(X_train, y_train)
-visualize(model, X_train, y_train, query=X_test[0])
+iris = load_iris()
+X, y = iris.data, iris.target
+
+model = DecisionTreeClassifier(max_depth=3, random_state=0)
+model.fit(X, y)
+
+visualize(
+    model,
+    X,
+    y,
+    query=X[0],
+    feature_names=iris.feature_names,
+    dataset_name="iris",
+)
 ```
 
-One call. A browser tab opens. You see the full model — and, if you pass a query point, the exact path it took to reach its prediction.
+For Random Forest:
 
----
+```python
+from sklearn.datasets import load_breast_cancer
+from sklearn.ensemble import RandomForestClassifier
+from mlviz import visualize
 
-## What you see in the browser
+breast = load_breast_cancer()
+X, y = breast.data, breast.target
 
-For a Decision Tree:
+model = RandomForestClassifier(
+    n_estimators=100,
+    random_state=0,
+    oob_score=True,
+)
+model.fit(X, y)
 
-- **Full tree diagram** — every node showing the feature it splits on, the threshold, how many training samples reached it, and the Gini impurity
-- **Leaf nodes** — the class distribution and final predicted class
-- **Decision path** (when a query is passed) — the root-to-leaf journey highlighted, with the query point's value shown at each split alongside the question being asked
-
----
-
-## V1 scope
-
-Decision Tree only (`sklearn.tree.DecisionTreeClassifier`).
-
-KNN, Random Forest, and SVM are planned for later versions.
-
----
-
-## Requirements
-
-- Python 3.10+
-- scikit-learn
-- FastAPI + uvicorn
-
----
-
-## Development setup
-
-```bash
-# Clone the repo
-git clone <repo-url>
-cd ML-visualizer
-
-# Create and activate a virtual environment (or use your existing ML env)
-python -m venv .venv
-source .venv/bin/activate      # macOS/Linux
-# .venv\Scripts\activate       # Windows
-
-# Install dependencies
-pip install fastapi uvicorn scikit-learn httpx pytest
-
-# Install mlviz in editable mode so imports resolve from anywhere
-pip install -e .
-
-# Run the test suite
-pytest tests/ -v
+visualize(
+    model,
+    X,
+    y,
+    query=X[0],
+    feature_names=breast.feature_names,
+    dataset_name="breast cancer",
+)
 ```
 
-All 14 tests should pass.
+## What the UI shows
 
----
+### Decision Tree
 
-## Try it out
+- Full tree layout with every split and leaf
+- Highlighted decision path for the current query
+- Hover tooltips for node details
+- Feature-importance sidebar
+- Dataset label in the header when `dataset_name` is provided
+- Browser tab titles like `mlviz · iris · decision tree`
 
-Open `demo.ipynb` in VS Code or Jupyter. It has ready-to-run examples using iris, wine, and breast-cancer datasets, plus an empty cell at the bottom for your own model.
+### Random Forest
 
----
+- Horizontal tree browser for selecting individual trees
+- Single-tree canvas with path highlighting
+- Ensemble vote distribution
+- Feature-importance sidebar
+- OOB score card when the fitted model exposes OOB data
+- Dataset label in the header when `dataset_name` is provided
+- Browser tab titles like `mlviz · breast cancer · random forest`
+
+## Current scope
+
+Supported now:
+
+- Decision Tree visualisation
+- Random Forest visualisation
+- Light/dark theme toggle with saved preference
+- Dataset naming via `visualize(..., dataset_name="...")`
+- Query-path tracing
+- Feature-importance display for both DT and RF
+
+Planned later:
+
+- KNN
+- SVM
+- More teaching-oriented explanation layers
+- Better controls for larger models and interactive probing
+
+## API
+
+Main entry point:
+
+```python
+visualize(
+    model,
+    X_train,
+    y_train,
+    query=None,
+    feature_names=None,
+    dataset_name=None,
+)
+```
+
+### Parameters
+
+- `model`: fitted `DecisionTreeClassifier` or `RandomForestClassifier`
+- `X_train`: training features used to fit the model
+- `y_train`: training labels used to fit the model
+- `query`: optional sample to trace through the model
+- `feature_names`: optional feature names; DataFrame column names are also supported
+- `dataset_name`: optional UI label used in the header and browser tab title
+
+### Current behaviour
+
+- Starts a local FastAPI server on a random free port
+- Serves a small model manifest at `/api/model`
+- Serves model payloads at `/api/tree` or `/api/forest`
+- Opens the browser automatically with `webbrowser.open(...)`
 
 ## Project structure
 
-```
+```text
 mlviz/
-├── __init__.py               ← visualize() entry point
+├── __init__.py
 ├── extractors/
-│   └── decision_tree.py      ← reads model.tree_, serialises to JSON
+│   ├── decision_tree.py
+│   ├── random_forest.py
+│   └── shared.py
 ├── server/
-│   └── app.py                ← FastAPI server, serves JSON + React app
+│   └── app.py
 └── frontend/
-    ├── src/                  ← React + Vite source
-    └── dist/                 ← built bundle (ships with package)
+    ├── src/
+    │   ├── App.jsx
+    │   ├── MLVizTree.jsx
+    │   ├── theme.js
+    │   ├── components/
+    │   │   ├── AppHeader.jsx
+    │   │   └── forest/
+    │   └── views/
+    │       ├── DecisionTreeView.jsx
+    │       └── RandomForestView.jsx
+    └── dist/
 
-tests/                        ← 14 tests, all passing
-demo.ipynb                    ← interactive examples notebook
+tests/
+├── test_decision_tree_extractor.py
+├── test_random_forest_extractor.py
+├── test_server.py
+└── test_visualize.py
 ```
-
----
 
 ## How it works
 
-`visualize()` does three things in sequence:
+`visualize()` does three things:
 
-1. **Extracts** — reads the model's internal arrays (`model.tree_`) and converts every node to a plain JSON dict
-2. **Serves** — starts a local FastAPI server on a random port and serves the JSON
-3. **Opens** — calls `webbrowser.open()` so the React frontend loads automatically
+1. Detects the supported model type.
+2. Serializes the fitted sklearn model into a frontend-friendly JSON payload.
+3. Starts a local FastAPI app and opens the browser viewer.
 
-The frontend fetches the JSON, renders the full tree diagram, and highlights the decision path if a query point was provided.
+The frontend first fetches `/api/model`, then loads the matching payload endpoint:
 
-The JSON the extractor produces looks like this:
+- Decision Tree: `/api/tree`
+- Random Forest: `/api/forest`
 
-```json
-{
-  "model_type": "decision_tree",
-  "classes": ["setosa", "versicolor", "virginica"],
-  "feature_names": ["petal length (cm)", "petal width (cm)"],
-  "nodes": [
-    { "node_id": 0, "feature": "petal length (cm)", "threshold": 2.45,
-      "n_samples": 150, "gini": 0.667, "left_child": 1, "right_child": 2, "leaf": false },
-    { "node_id": 1, "leaf": true, "counts": [50, 0, 0], "prediction": 0 }
-  ],
-  "path": [
-    { "node_id": 0, "feature": "petal length (cm)", "threshold": 2.45,
-      "value": 1.4, "went_left": true },
-    { "node_id": 1, "leaf": true, "counts": [50, 0, 0], "prediction": 0 }
-  ]
-}
+The tree canvas renderer is shared between both views, while the surrounding UI differs by model type.
+
+## Development setup
+
+### Python
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+pytest tests/ -v
 ```
 
----
+If you are using the existing project environment instead:
 
-## Roadmap
+```bash
+/opt/anaconda3/envs/NN-crew/bin/python -m pytest tests/ -v
+```
 
-V1 ships a fully working Decision Tree visualizer — the core loop (extract → serve → render) is solid, and the frontend renders arbitrary tree depths with zoom controls, dark mode, and decision path highlighting.
+### Frontend
 
-Planned next:
+```bash
+cd mlviz/frontend
+npm install
+npm run dev
+```
 
-- **More model types** — Random Forest, KNN, and SVM extractors, each with a model-appropriate frontend
-- **Learning mode** — inline explanations of what the model is actually doing at each step: what Gini impurity measures, why a split happens where it does, what the class distribution in a leaf tells you about confidence
-- **Installable package** — `pip install mlviz` once the model set is broad enough to be worth distributing
+Build the shipped frontend bundle after source changes:
 
----
+```bash
+cd mlviz/frontend
+npm run build
+```
+
+## Demo notebook
+
+`demo.ipynb` includes ready-to-run examples for:
+
+- iris
+- wine
+- breast cancer
+
+The notebook now passes dataset names into the viewer so sessions are easier to distinguish in both the UI and browser tabs.
+
+## Testing
+
+The repo currently has regression coverage for:
+
+- Decision Tree extractor shape and path tracing
+- Random Forest extractor payload structure
+- FastAPI endpoint behaviour
+- `visualize()` dispatch and server startup flow
+- Dataset-name payload propagation
+
+Recent targeted verification in this repo:
+
+- `npm run build` passed
+- `tests/test_decision_tree_extractor.py`, `tests/test_server.py`, and `tests/test_visualize.py` passed together
+
+## Known limitations
+
+- Only `DecisionTreeClassifier` and `RandomForestClassifier` are supported today.
+- Random Forest class labels are still driven by the serialized payload shape; richer class-name customisation is still worth doing later.
+- Very large forests will need a better tree-browser strategy than the current flat strip.
+- Light mode needs a dedicated contrast pass in the tree canvas and chrome.
 
 ## License
 
