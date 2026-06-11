@@ -234,14 +234,19 @@ pip install -e .
 
 #### Jupyter kernel registration (venv only)
 
-Unlike conda, venv environments don't register themselves as Jupyter kernels automatically. Run once after setup:
+Unlike conda, venv environments don't register themselves as Jupyter kernels automatically. `ipykernel` is already installed by `pip install -r requirements.txt`.
+
+**Step 1** - Register the kernel:
 
 ```bash
-pip install ipykernel
 python -m ipykernel install --user --name=mlvis-env --display-name "mlvis-env"
 ```
 
-Then in VS Code: open `demo.ipynb` → click the kernel picker in the top-right → **Select Another Kernel** → **Jupyter Kernel** → select `mlvis-env`.
+**Step 2** - Reload VS Code: `Ctrl+Shift+P` → **Developer: Reload Window** (the Jupyter extension caches the kernel list and won't pick up the new kernel until the window refreshes).
+
+**Step 3** - Open `demo.ipynb`. Click the kernel picker in the top-right → **Select Another Kernel** → **Python Environments** → select `mlvis-env`.
+
+> If `mlvis-env` doesn't appear under **Python Environments**, try: kernel picker → **Select Another Kernel** → **Jupyter Kernel** → select `mlvis-env` instead.
 
 ---
 
@@ -300,6 +305,8 @@ Open `demo.ipynb` in Jupyter. It contains ready-to-run cells for both supported 
 **Option B — write your own**
 
 Follow the examples in [Quick start](#quick-start) to fit a model and call `visualize()`. Any `DecisionTreeClassifier` or `RandomForestClassifier` from scikit-learn will work.
+
+> **Note:** When running `visualize()` from a plain `.py` script, the terminal stays open with `mlviz serving at http://... - press Ctrl+C to stop`. This is expected - the server keeps the browser tab live until you stop it. Running from a Jupyter notebook returns control to the cell immediately.
 
 ---
 
