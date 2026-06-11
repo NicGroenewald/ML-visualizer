@@ -1,4 +1,5 @@
 import time
+import types
 
 import pytest
 from sklearn.datasets import load_iris
@@ -144,3 +145,83 @@ def test_visualize_decision_tree_includes_dataset_name(monkeypatch):
     url = opened_urls[0]
     payload = httpx.get(f"{url}/api/tree").json()
     assert payload["dataset_name"] == "iris"
+
+
+def test_is_interactive_false_without_ipykernel(monkeypatch):
+    import sys
+    import mlviz
+
+    monkeypatch.delitem(sys.modules, "ipykernel", raising=False)
+
+    assert mlviz._is_interactive() is False
+
+
+def test_is_interactive_true_with_ipykernel(monkeypatch):
+    import sys
+    import mlviz
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    assert mlviz._is_interactive() is True
+
+
+def test_visualize_non_daemon_thread_in_script_mode(monkeypatch):
+    import builtins
+    import sys
+    import threading
+    import mlviz
+
+    monkeypatch.delitem(sys.modules, "ipykernel", raising=False)
+
+    monkeypatch.setattr("webbrowser.open", lambda url: None)
+    monkeypatch.setattr("threading.Thread.start", lambda self: None)
+    monkeypatch.setattr(mlviz, "_find_free_port", lambda: 8765)
+    monkeypatch.setattr(mlviz, "_wait_for_server", lambda port, timeout=10.0: None)
+    monkeypatch.setattr(builtins, "print", lambda *args, **kwargs: None)
+
+    captured_daemon = []
+    original_init = threading.Thread.__init__
+
+    def capturing_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        captured_daemon.append(self.daemon)
+
+    monkeypatch.setattr(threading.Thread, "__init__", capturing_init)
+
+    iris = load_iris()
+    model = DecisionTreeClassifier(random_state=0)
+    model.fit(iris.data, iris.target)
+
+    mlviz.visualize(model, iris.data, iris.target)
+
+    assert captured_daemon == [False], "Thread must be non-daemon in script mode"
+
+
+def test_visualize_daemon_thread_in_jupyter_mode(monkeypatch):
+    import sys
+    import threading
+    import mlviz
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    monkeypatch.setattr("webbrowser.open", lambda url: None)
+    monkeypatch.setattr("threading.Thread.start", lambda self: None)
+    monkeypatch.setattr(mlviz, "_find_free_port", lambda: 8765)
+    monkeypatch.setattr(mlviz, "_wait_for_server", lambda port, timeout=10.0: None)
+
+    captured_daemon = []
+    original_init = threading.Thread.__init__
+
+    def capturing_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        captured_daemon.append(self.daemon)
+
+    monkeypatch.setattr(threading.Thread, "__init__", capturing_init)
+
+    iris = load_iris()
+    model = DecisionTreeClassifier(random_state=0)
+    model.fit(iris.data, iris.target)
+
+    mlviz.visualize(model, iris.data, iris.target)
+
+    assert captured_daemon == [True], "Thread must be daemon in Jupyter mode"
