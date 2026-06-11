@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from sklearn.datasets import load_iris
 from sklearn.neighbors import KNeighborsClassifier
@@ -85,6 +87,39 @@ def test_visualize_starts_server_and_serves_tree(monkeypatch):
     assert data["model_type"] == "decision_tree"
     assert len(data["nodes"]) > 0
     assert data["path"] is None
+
+
+def test_visualize_raises_if_server_never_starts(monkeypatch):
+    import socket as _socket
+    from mlviz import visualize
+
+    # Patch create_connection to always fail
+    def always_refuse(*args, **kwargs):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(_socket, "create_connection", always_refuse)
+
+    # Fast-forward time so the timeout expires immediately (avoids a 10s real-time wait)
+    real_time = time.time()
+    call_count = [0]
+
+    def fake_time():
+        call_count[0] += 1
+        # First call sets `start`; every subsequent call is already past the timeout
+        return real_time if call_count[0] == 1 else real_time + 11.0
+
+    monkeypatch.setattr(time, "time", fake_time)
+
+    # Prevent the browser from opening and the server thread from actually binding
+    monkeypatch.setattr("webbrowser.open", lambda url: None)
+    monkeypatch.setattr("threading.Thread.start", lambda self: None)
+
+    iris = load_iris()
+    model = DecisionTreeClassifier(random_state=0)
+    model.fit(iris.data, iris.target)
+
+    with pytest.raises(RuntimeError, match="mlviz server did not start"):
+        visualize(model, iris.data, iris.target)
 
 
 def test_visualize_decision_tree_includes_dataset_name(monkeypatch):

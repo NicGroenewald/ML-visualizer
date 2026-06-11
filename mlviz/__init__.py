@@ -18,7 +18,7 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def _wait_for_server(port: int, timeout: float = 5.0) -> None:
+def _wait_for_server(port: int, timeout: float = 10.0) -> None:
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -26,6 +26,10 @@ def _wait_for_server(port: int, timeout: float = 5.0) -> None:
                 return
         except OSError:
             time.sleep(0.05)
+    raise RuntimeError(
+        f"mlviz server did not start on port {port} within {timeout:.0f}s. "
+        "Check that uvicorn installed correctly and no firewall is blocking loopback connections."
+    )
 
 
 def visualize(
