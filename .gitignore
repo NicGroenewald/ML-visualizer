@@ -47,6 +47,7 @@ secrets.json
 *.key
 *.p12
 *.pfx
+images/
 
 # ── Node / frontend build ─────────────────────────────────────────────────────
 mlviz/frontend/node_modules/
