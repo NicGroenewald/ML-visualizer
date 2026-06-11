@@ -186,31 +186,83 @@ tests/
 | Python | 3.10+ | tested on 3.10.20 |
 | Node.js | 18+ | tested on v26 |
 
-### 1. Clone and install Python dependencies
+---
+
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/NicGroenewald/ML-visualizer.git
 cd ML-visualizer
+```
+
+---
+
+### 2. Set up a Python environment
+
+Pick one path. **Conda is recommended** — it handles numpy/scikit-learn native dependencies cleanly and registers automatically as a Jupyter kernel in VS Code.
+
+#### Option A — conda (recommended)
+
+```bash
+conda create -n mlvis python=3.10
+conda activate mlvis
 pip install -r requirements.txt
 pip install -e .
 ```
 
-`pip install -e .` installs `mlviz` as an editable package so changes to the source are picked up immediately without reinstalling.
+The `mlvis` kernel appears automatically in VS Code's kernel picker — no extra steps needed.
 
-### 2. Install frontend dependencies
+#### Option B — venv (Mac/Linux)
+
+```bash
+python -m venv mlvis-env
+source mlvis-env/bin/activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+#### Option C — venv (Windows)
+
+```bash
+python -m venv mlvis-env
+mlvis-env\Scripts\activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+> **Tip (venv only):** If you see `BackendUnavailable: Cannot import 'setuptools.backends.legacy'` during `pip install -e .`, run `pip install setuptools` first, then retry.
+
+#### Jupyter kernel registration (venv only)
+
+Unlike conda, venv environments don't register themselves as Jupyter kernels automatically. Run once after setup:
+
+```bash
+pip install ipykernel
+python -m ipykernel install --user --name=mlvis-env --display-name "mlvis-env"
+```
+
+Then in VS Code: open `demo.ipynb` → click the kernel picker in the top-right → **Select Another Kernel** → **Jupyter Kernel** → select `mlvis-env`.
+
+---
+
+### 3. Install frontend dependencies
 
 ```bash
 cd mlviz/frontend
 npm install
 ```
 
-### 3. Run the test suite
+---
+
+### 4. Run the test suite
 
 ```bash
 pytest tests/ -v
 ```
 
-### 4. Frontend development (hot reload)
+---
+
+### 5. Frontend development (hot reload)
 
 Two terminals:
 
@@ -227,7 +279,9 @@ npm run dev
 
 Open the URL Vite prints (usually `http://localhost:5173`). The Vite config proxies `/api/*` to the Python server so the frontend works against live model data with hot reload.
 
-### 5. Build the frontend bundle
+---
+
+### 6. Build the frontend bundle
 
 Run before committing any frontend changes. The built `dist/` ships with the Python package and must stay in sync with `src/`.
 
@@ -235,7 +289,7 @@ Run before committing any frontend changes. The built `dist/` ships with the Pyt
 cd mlviz/frontend && npm run build
 ```
 
-### 6. Test run
+### 7. Test run
 
 Two options to verify everything is working end-to-end:
 
