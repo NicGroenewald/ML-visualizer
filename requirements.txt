@@ -7,7 +7,9 @@ scikit-learn==1.7.2
 numpy==2.0.1
 fastapi==0.136.3
 uvicorn==0.49.0
+ipykernel==7.1.0
 
 # ── Test ──────────────────────────────────────────────────────────────────────
 pytest==9.0.3
 httpx==0.28.1      # required by FastAPI TestClient
+pandas==2.3.3

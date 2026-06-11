@@ -1,4 +1,5 @@
 import socket
+import sys
 import threading
 import time
 import webbrowser
@@ -18,7 +19,11 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def _wait_for_server(port: int, timeout: float = 5.0) -> None:
+def _is_interactive() -> bool:
+    return "ipykernel" in sys.modules
+
+
+def _wait_for_server(port: int, timeout: float = 10.0) -> None:
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -26,6 +31,10 @@ def _wait_for_server(port: int, timeout: float = 5.0) -> None:
                 return
         except OSError:
             time.sleep(0.05)
+    raise RuntimeError(
+        f"mlviz server did not start on port {port} within {timeout:.0f}s. "
+        "Check that uvicorn installed correctly and no firewall is blocking loopback connections."
+    )
 
 
 def visualize(
@@ -56,10 +65,14 @@ def visualize(
     port = _find_free_port()
     app = create_app(payload, endpoint=endpoint)
 
+    daemon = _is_interactive()
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(target=server.run, daemon=daemon)
     thread.start()
 
     _wait_for_server(port)
-    webbrowser.open(f"http://127.0.0.1:{port}")
+    url = f"http://127.0.0.1:{port}"
+    webbrowser.open(url)
+    if not daemon:
+        print(f"mlviz serving at {url} - press Ctrl+C to stop")
