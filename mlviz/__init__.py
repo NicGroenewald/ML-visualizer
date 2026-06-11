@@ -74,5 +74,14 @@ def visualize(
     _wait_for_server(port)
     url = f"http://127.0.0.1:{port}"
     webbrowser.open(url)
+
     if not daemon:
-        print(f"mlviz serving at {url} - press Ctrl+C to stop")
+        print(f"mlviz serving at {url} — press Ctrl+C to stop")
+        try:
+            thread.join()
+        except KeyboardInterrupt:
+            server.should_exit = True
+            try:
+                thread.join()
+            except KeyboardInterrupt:
+                pass

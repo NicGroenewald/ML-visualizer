@@ -25,9 +25,13 @@ def test_visualize_raises_for_unsupported_model():
 
 
 def test_visualize_supports_random_forest(monkeypatch):
+    import sys
     import httpx
     from sklearn.ensemble import RandomForestClassifier
     from mlviz import visualize
+
+    # Run in daemon/interactive mode so visualize() returns without blocking
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
 
     opened_urls = []
     monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
@@ -48,9 +52,13 @@ def test_visualize_supports_random_forest(monkeypatch):
 
 
 def test_visualize_random_forest_includes_dataset_name(monkeypatch):
+    import sys
     import httpx
     from sklearn.ensemble import RandomForestClassifier
     from mlviz import visualize
+
+    # Run in daemon/interactive mode so visualize() returns without blocking
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
 
     opened_urls = []
     monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
@@ -67,8 +75,12 @@ def test_visualize_random_forest_includes_dataset_name(monkeypatch):
 
 
 def test_visualize_starts_server_and_serves_tree(monkeypatch):
+    import sys
     import httpx
     from mlviz import visualize
+
+    # Run in daemon/interactive mode so visualize() returns without blocking
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
 
     opened_urls = []
     monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
@@ -124,8 +136,12 @@ def test_visualize_raises_if_server_never_starts(monkeypatch):
 
 
 def test_visualize_decision_tree_includes_dataset_name(monkeypatch):
+    import sys
     import httpx
     from mlviz import visualize
+
+    # Run in daemon/interactive mode so visualize() returns without blocking
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
 
     opened_urls = []
     monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
@@ -175,6 +191,7 @@ def test_visualize_non_daemon_thread_in_script_mode(monkeypatch):
 
     monkeypatch.setattr("webbrowser.open", lambda url: None)
     monkeypatch.setattr("threading.Thread.start", lambda self: None)
+    monkeypatch.setattr("threading.Thread.join", lambda self: None)
     monkeypatch.setattr(mlviz, "_find_free_port", lambda: 8765)
     monkeypatch.setattr(mlviz, "_wait_for_server", lambda port, timeout=10.0: None)
     monkeypatch.setattr(builtins, "print", lambda *args, **kwargs: None)
@@ -225,3 +242,64 @@ def test_visualize_daemon_thread_in_jupyter_mode(monkeypatch):
     mlviz.visualize(model, iris.data, iris.target)
 
     assert captured_daemon == [True], "Thread must be daemon in Jupyter mode"
+
+
+def test_ctrl_c_sets_server_should_exit(monkeypatch):
+    import builtins
+    import sys
+    import threading
+    import uvicorn
+    import mlviz
+
+    # Script mode — no ipykernel
+    monkeypatch.delitem(sys.modules, "ipykernel", raising=False)
+
+    # Suppress side effects
+    monkeypatch.setattr("webbrowser.open", lambda url: None)
+    monkeypatch.setattr(mlviz, "_find_free_port", lambda: 8765)
+    monkeypatch.setattr(mlviz, "_wait_for_server", lambda port, timeout=10.0: None)
+    monkeypatch.setattr(builtins, "print", lambda *a, **kw: None)
+
+    # Capture the server instance so we can inspect should_exit afterwards
+    captured_server = []
+
+    class MockServer:
+        def __init__(self, config):
+            self.should_exit = False
+            captured_server.append(self)
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr(uvicorn, "Server", MockServer)
+
+    # First join() raises KeyboardInterrupt; second join() returns normally
+    join_call_count = [0]
+
+    class MockThread:
+        def __init__(self, target=None, daemon=None, **kwargs):
+            self.daemon = daemon
+
+        def start(self):
+            pass
+
+        def join(self):
+            join_call_count[0] += 1
+            if join_call_count[0] == 1:
+                raise KeyboardInterrupt()
+
+    monkeypatch.setattr(threading, "Thread", MockThread)
+
+    iris = load_iris()
+    model = DecisionTreeClassifier(random_state=0)
+    model.fit(iris.data, iris.target)
+
+    mlviz.visualize(model, iris.data, iris.target)
+
+    assert len(captured_server) == 1, "Expected one server instance"
+    assert captured_server[0].should_exit is True, (
+        "server.should_exit must be True after Ctrl+C so uvicorn shuts down gracefully"
+    )
+    assert join_call_count[0] == 2, (
+        "join() must be called twice: once to wait, once to confirm clean exit after shutdown"
+    )
