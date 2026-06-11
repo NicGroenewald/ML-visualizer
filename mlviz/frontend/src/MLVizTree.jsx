@@ -238,7 +238,7 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
         ref={containerRef}
         style={{
           flex: 1, minHeight: 0, overflow: "auto", position: "relative",
-          background: T.canvas,
+          backgroundColor: T.canvas,
           backgroundImage: `radial-gradient(circle, ${T.gridDot} 1px, transparent 1px)`,
           backgroundSize: "24px 24px",
         }}
