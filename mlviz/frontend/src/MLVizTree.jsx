@@ -260,7 +260,7 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
                 <path
                   d={`M${e.from.cx},${e.from.py + NH} C${e.from.cx},${midY} ${e.to.cx},${midY} ${e.to.cx},${e.to.py}`}
                   fill="none"
-                  stroke={e.act ? T.accent : T.border}
+                  stroke={e.act ? T.accent : T.nodeBorder}
                   strokeWidth={e.act ? 2 : 1.25}
                   style={{ transition: "stroke 180ms ease-out" }}
                 />
@@ -286,8 +286,8 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
               ? (act ? (classFill[p] ?? T.nodeFill) : T.nodeFill)
               : (act ? T.accentFill : T.nodeFill);
             const stroke = n.leaf
-              ? (act ? (classDot[p] ?? T.border) : hov ? T.borderHover : T.border)
-              : (act ? T.accent : hov ? T.borderHover : T.border);
+              ? (act ? (classDot[p] ?? T.nodeBorder) : hov ? T.nodeBorderHover : T.nodeBorder)
+              : (act ? T.accent : hov ? T.nodeBorderHover : T.nodeBorder);
             const sw = act ? 1.5 : 1;
 
             return (
