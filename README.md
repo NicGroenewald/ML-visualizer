@@ -179,9 +179,73 @@ tests/
 
 ## Development setup
 
-### Python
+### Prerequisites
 
-COMING SOON....
+| Tool | Version | Notes |
+|---|---|---|
+| Python | 3.10+ | tested on 3.10.20 |
+| Node.js | 18+ | tested on v26 |
+
+### 1. Clone and install Python dependencies
+
+```bash
+git clone https://github.com/NicGroenewald/ML-visualizer.git
+cd ML-visualizer
+pip install -r requirements.txt
+pip install -e .
+```
+
+`pip install -e .` installs `mlviz` as an editable package so changes to the source are picked up immediately without reinstalling.
+
+### 2. Install frontend dependencies
+
+```bash
+cd mlviz/frontend
+npm install
+```
+
+### 3. Run the test suite
+
+```bash
+pytest tests/ -v
+```
+
+### 4. Frontend development (hot reload)
+
+Two terminals:
+
+**Terminal 1 — Python API server** (fixed port 8765, serves iris test data):
+```bash
+python dev_server.py
+```
+
+**Terminal 2 — Vite dev server**:
+```bash
+cd mlviz/frontend
+npm run dev
+```
+
+Open the URL Vite prints (usually `http://localhost:5173`). The Vite config proxies `/api/*` to the Python server so the frontend works against live model data with hot reload.
+
+### 5. Build the frontend bundle
+
+Run before committing any frontend changes. The built `dist/` ships with the Python package and must stay in sync with `src/`.
+
+```bash
+cd mlviz/frontend && npm run build
+```
+
+### 6. Test run
+
+Two options to verify everything is working end-to-end:
+
+**Option A — demo notebook**
+
+Open `demo.ipynb` in Jupyter. It contains ready-to-run cells for both supported model types (Decision Tree on iris, Random Forest on breast cancer) with query-path tracing enabled. Run all cells and a browser tab should open for each.
+
+**Option B — write your own**
+
+Follow the examples in [Quick start](#quick-start) to fit a model and call `visualize()`. Any `DecisionTreeClassifier` or `RandomForestClassifier` from scikit-learn will work.
 
 ---
 
