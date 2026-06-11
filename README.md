@@ -181,27 +181,7 @@ tests/
 
 ### Python
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-pytest tests/ -v
-```
-
-### Frontend
-
-```bash
-cd mlviz/frontend
-npm install
-npm run dev
-```
-
-To rebuild the bundled frontend after source changes:
-
-```bash
-cd mlviz/frontend
-npm run build
-```
+COMING SOON....
 
 ---
 
