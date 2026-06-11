@@ -39,11 +39,11 @@ export const DARK = {
 export const LIGHT = {
   bg:               "#FAFAFA",
   canvas:           "#FCFCFC",
-  gridDot:          "#E8E8EA",
+  gridDot:          "#C8C8CC",
   surface:          "#FFFFFF",
   surfaceSecondary: "#F4F4F5",
   nodeFill:         "#FFFFFF",
-  border:           "#E4E4E7",
+  border:           "#C6C6CB",
   borderHover:      "#A1A1AA",
   nodeBorder:       "#18181B",
   nodeBorderHover:  "#09090B",
