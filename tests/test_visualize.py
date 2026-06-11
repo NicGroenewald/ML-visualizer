@@ -250,8 +250,6 @@ def test_ctrl_c_sets_server_should_exit(monkeypatch):
     import threading
     import uvicorn
     import mlviz
-    from sklearn.datasets import load_iris
-    from sklearn.tree import DecisionTreeClassifier
 
     # Script mode — no ipykernel
     monkeypatch.delitem(sys.modules, "ipykernel", raising=False)

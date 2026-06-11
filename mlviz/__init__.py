@@ -81,4 +81,7 @@ def visualize(
             thread.join()
         except KeyboardInterrupt:
             server.should_exit = True
-            thread.join()
+            try:
+                thread.join()
+            except KeyboardInterrupt:
+                pass
