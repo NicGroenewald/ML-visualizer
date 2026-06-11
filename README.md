@@ -28,7 +28,7 @@
 
 ### Decision Tree
 
-![Decision Tree](image-1.png)
+![Decision Tree](images/image-1.png)
 
 - Full tree layout with every split and leaf node
 - Highlighted decision path for a query point
@@ -38,7 +38,7 @@
 
 ### Random Forest
 
-![Random Forest view](image.png)
+![Random Forest view](images/image.png)
 
 - Tree browser strip — scroll and click to inspect individual trees
 - Single-tree canvas with path highlighting
