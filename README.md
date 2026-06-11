@@ -181,41 +181,27 @@ tests/
 
 ### Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Python | 3.10+ | tested on 3.10.20 |
-| Node.js | 18+ | tested on v26 |
-
----
-
-## Development setup
-
-### Prerequisites
-
-- Python 3.10
+- Python 3.10+
 - Node.js + npm
 - Git
 
-### Notes
-
-- `venv` setup is the normal development path and works well for running your own `.py` file.
-- If you want to use `.ipynb` files such as `demo.ipynb`, use the `conda` setup path below.
-
+**Notes**
+- `venv` setup works well for running your own `.py` scripts. → [Venv setup](#1-venv-setup)
+- For `.ipynb` files such as `demo.ipynb`, use conda. → [Conda setup](#2-conda-setup-best-for-both-py-and-ipynb-files)
+- 
 ---
 
-### 1. Venv setup
+### 1. Venv setup (for .py)
 
-#### 1. Clone the repo
-
+**1. Clone the repo**
 ```bash
 git clone https://github.com/NicGroenewald/ML-visualizer.git
 cd ML-visualizer
 ```
 
-#### 2. Set up a Python environment
+**2. Set up a Python environment**
 
-##### venv (Mac/Linux)
-
+venv (Mac/Linux):
 ```bash
 python -m venv mlvis-env
 source mlvis-env/bin/activate
@@ -223,8 +209,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-##### venv (Windows)
-
+venv (Windows):
 ```bash
 python -m venv mlvis-env
 mlvis-env\Scripts\activate
@@ -232,65 +217,39 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-> **Tip (venv only):** If you see `BackendUnavailable: Cannot import 'setuptools.backends.legacy'` during `pip install -e .`, run `pip install setuptools` first, then retry.
+> **Tip:** If you see `BackendUnavailable: Cannot import 'setuptools.backends.legacy'` during `pip install -e .`, run `pip install setuptools` first, then retry.
 
-#### 3. Install frontend dependencies
-
+**3. Install frontend dependencies**
 ```bash
 cd mlviz/frontend
 npm install
+cd ../..
 ```
 
-#### 4. Run the test suite
-
+**4. Run the test suite**
 ```bash
 pytest tests/ -v
 ```
 
-#### 5. Frontend development (hot reload)
-
-Two terminals:
-
-**Terminal 1 — Python API server** (fixed port 8765, serves iris test data):
-```bash
-python dev_server.py
-```
-
-**Terminal 2 — Vite dev server**:
-```bash
-cd mlviz/frontend
-npm run dev
-```
-
-Open the URL Vite prints (usually `http://localhost:5173`). The Vite config proxies `/api/*` to the Python server so the frontend works against live model data with hot reload.
-
-#### 6. Build the frontend bundle
-
-Run before committing any frontend changes. The built `dist/` ships with the Python package and must stay in sync with `src/`.
-
-```bash
-cd mlviz/frontend && npm run build
-```
-
-#### 7. Test run
+**5. Test run**
 
 Write your own `.py` file using the examples in [Quick start](#quick-start) to fit a model and call `visualize()`. Any `DecisionTreeClassifier` or `RandomForestClassifier` from scikit-learn will work.
 
-> **Note:** When running `visualize()` from a plain `.py` script, the terminal stays open with `mlviz serving at http://... - press Ctrl+C to stop`. This is expected - the server keeps the browser tab live until you stop it.
+> **Note:** When running `visualize()` from a plain `.py` script, the terminal stays open with `mlviz serving at http://... — press Ctrl+C to stop`. This is expected — the server keeps the browser tab live until you stop it.
 
 ---
 
-### 2. Conda setup
+### 2. Conda setup (best for both `.py` and `.ipynb` files)
 
-#### 1. Clone the repo
+Ensure you have conda installed from https://www.anaconda.com/download
 
+**1. Clone the repo**
 ```bash
 git clone https://github.com/NicGroenewald/ML-visualizer.git
 cd ML-visualizer
 ```
 
-#### 2. Set up a Python environment
-
+**2. Set up a Python environment**
 ```bash
 conda create -n mlvis python=3.10
 conda activate mlvis
@@ -298,48 +257,49 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-Use this path if you want the smoothest experience with Jupyter notebooks and `demo.ipynb`.
+> Use this path if you want the smoothest experience with Jupyter notebooks and `demo.ipynb`.
 
-#### 3. Install frontend dependencies
-
+**3. Install frontend dependencies**
 ```bash
 cd mlviz/frontend
 npm install
+cd ../..
 ```
 
-#### 4. Run the test suite
-
+**4. Run the test suite**
 ```bash
 pytest tests/ -v
 ```
 
-#### 5. Frontend development (hot reload)
+**5. Notebook / demo run**
+
+Open `demo.ipynb` in VS Code or Jupyter and select the `mlvis` conda environment as the notebook kernel. Then run the notebook cells to launch the visualizer.
+
+---
+
+### Contributing / Frontend development
+
+Only needed if you're modifying the React frontend.
 
 Two terminals:
 
-**Terminal 1 — Python API server** (fixed port 8765, serves iris test data):
+Terminal 1 — Python API server (fixed port 8765, serves iris test data):
 ```bash
 python dev_server.py
 ```
 
-**Terminal 2 — Vite dev server**:
+Terminal 2 — Vite dev server:
 ```bash
 cd mlviz/frontend
 npm run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`).
+Open the URL Vite prints (usually `http://localhost:5173`). The Vite config proxies `/api/*` to the Python server so the frontend works against live model data with hot reload.
 
-#### 6. Build the frontend bundle
-
+Before committing any frontend changes, rebuild the bundle. The built `dist/` ships with the Python package and must stay in sync with `src/`.
 ```bash
 cd mlviz/frontend && npm run build
 ```
-
-#### 7. Notebook / demo run
-
-Open `demo.ipynb` in VS Code or Jupyter and select the `mlvis` conda environment as the notebook kernel. Then run the notebook cells to launch the visualizer.
-
 ---
 
 ## Roadmap
