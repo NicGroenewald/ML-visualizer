@@ -85,3 +85,43 @@ def test_serialize_path_none_when_no_query(iris_model):
     from mlviz.extractors.decision_tree import serialize
     result = serialize(model, X, y, feature_names=feature_names)
     assert result["path"] is None
+
+
+def test_decision_tree_shared_refactor_preserves_node_shape(iris_model):
+    model, X, y, feature_names = iris_model
+    from mlviz.extractors.decision_tree import serialize
+    result = serialize(model, X, y, query=X[0], feature_names=feature_names)
+    base_keys = {
+        "node_id", "n_samples", "gini", "leaf",
+        "feature", "threshold", "left_child", "right_child",
+    }
+    for node in result["nodes"]:
+        expected = base_keys | ({"counts", "prediction"} if node["leaf"] else set())
+        assert set(node.keys()) == expected
+
+
+def test_decision_tree_refactor_preserves_path_leaf_shape(iris_model):
+    model, X, y, feature_names = iris_model
+    from mlviz.extractors.decision_tree import serialize
+    result = serialize(model, X, y, query=X[0], feature_names=feature_names)
+    leaf = result["path"][-1]
+    assert leaf["leaf"] is True
+    assert set(leaf.keys()) == {"node_id", "leaf", "counts", "prediction"}
+
+
+def test_decision_tree_feature_importances_present_and_sorted(iris_model):
+    model, X, y, feature_names = iris_model
+    from mlviz.extractors.decision_tree import serialize
+    result = serialize(model, X, y, feature_names=feature_names)
+    items = result["feature_importances"]
+    assert len(items) == X.shape[1]
+    assert items == sorted(items, key=lambda item: item["importance"], reverse=True)
+
+
+def test_decision_tree_feature_importances_match_model(iris_model):
+    model, X, y, feature_names = iris_model
+    from mlviz.extractors.decision_tree import serialize
+    result = serialize(model, X, y, feature_names=feature_names)
+    reported = {item["feature_name"]: item["importance"] for item in result["feature_importances"]}
+    for name, importance in zip(feature_names, model.feature_importances_):
+        assert reported[name] == pytest.approx(float(importance), rel=1e-6)

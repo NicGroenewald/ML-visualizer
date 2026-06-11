@@ -1,52 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-
-// ─── Design tokens (Apple HIG light + dark) ───────────────────────────────────
-const LIGHT = {
-  bg:               "#F2F2F7",
-  surface:          "#FFFFFF",
-  surfaceSecondary: "#F2F2F7",
-  border:           "#3C3C43",
-  borderHover:      "#1C1C1E",
-  text:             "#1C1C1E",
-  textSecondary:    "#8E8E93",
-  textTertiary:     "#AEAEB2",
-  separator:        "#E5E5EA",
-  blue:             "#007AFF",
-  blueFill:         "#EBF5FF",
-  green:            "#34C759",
-  greenFill:        "#EEFBF1",
-  orange:           "#FF9F0A",
-  orangeFill:       "#FFF4E5",
-  red:              "#FF3B30",
-  classFill: ["#EBF5FF", "#EEFBF1", "#FFF4E5", "#F5EFFE", "#FFF0F3", "#E6FAFA"],
-};
-
-const DARK = {
-  bg:               "#000000",
-  surface:          "#1C1C1E",
-  surfaceSecondary: "#2C2C2E",
-  border:           "#48484A",
-  borderHover:      "#AEAEB2",
-  text:             "#FFFFFF",
-  textSecondary:    "#AEAEB2",
-  textTertiary:     "#636366",
-  separator:        "#38383A",
-  blue:             "#0A84FF",
-  blueFill:         "#001E3C",
-  green:            "#30D158",
-  greenFill:        "#0A2A10",
-  orange:           "#FF9F0A",
-  orangeFill:       "#2A1500",
-  red:              "#FF453A",
-  classFill: ["#001E3C", "#0A2A10", "#2A1500", "#1A0030", "#30000E", "#002020"],
-};
-
-const CLASS_COLORS = ["#007AFF", "#34C759", "#FF9F0A", "#AF52DE", "#FF375F", "#00C7BE"];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const sf = (f) => f ? f.replace(" (cm)", "") : "";
-const clampLabel = (s, max = 19) =>
-  s && s.length > max ? s.slice(0, max - 1) + "…" : (s ?? "");
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import {
+  getTheme, getClassColors, sf, clampLabel, FONT_UI, FONT_MONO,
+} from "./theme";
 
 // ─── Layout algorithm ─────────────────────────────────────────────────────────
 const NW = 168, NH = 52, LH = 112, HG = 28, HP = 44, VP = 28;
@@ -90,44 +46,32 @@ function computeLayout(nodes) {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-function Pill({ children, T }) {
+function TRow({ label, value, T }) {
   return (
-    <span style={{
-      fontSize: 11, padding: "3px 10px", borderRadius: 20,
-      background: T.surfaceSecondary, border: `0.5px solid ${T.border}`,
-      color: T.textSecondary, letterSpacing: "0.1px",
-    }}>
-      {children}
-    </span>
-  );
-}
-
-function TRow({ label, value, mono = true, T }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2.5px 0" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2.5px 0", gap: 18 }}>
       <span style={{ fontSize: 11, color: T.textSecondary }}>{label}</span>
-      <span style={{ fontSize: 11, color: T.text, fontFamily: mono ? '"SF Mono", Menlo, monospace' : "inherit" }}>
+      <span style={{ fontSize: 11, color: T.text, fontFamily: FONT_MONO }}>
         {value}
       </span>
     </div>
   );
 }
 
-function Tooltip({ node, map, classes, T, classDot, classFill }) {
+function Tooltip({ node, map, classes, T, classDot }) {
   if (!node) return null;
   const p = node.prediction;
   return (
     <div style={{
       background: T.surface,
-      border: `0.5px solid ${T.separator}`,
-      borderRadius: 13,
-      padding: "13px 15px",
-      minWidth: 182,
-      boxSizing: "border-box",
+      border: `1px solid ${T.border}`,
+      borderRadius: 8,
+      padding: "12px 14px",
+      minWidth: 190,
+      boxShadow: "0 4px 24px rgba(0, 0, 0, 0.25)",
     }}>
       <div style={{
         fontSize: 10, color: T.textTertiary, letterSpacing: "0.7px",
-        textTransform: "uppercase", marginBottom: 5,
+        textTransform: "uppercase", marginBottom: 6, fontWeight: 500,
       }}>
         {node.leaf ? "leaf node" : "split node"}
       </div>
@@ -135,30 +79,30 @@ function Tooltip({ node, map, classes, T, classDot, classFill }) {
       {node.leaf ? (
         <>
           <div style={{
-            fontSize: 13, fontWeight: 500, color: classDot[p] ?? T.textSecondary,
+            fontSize: 13, fontWeight: 600, color: classDot[p] ?? T.textSecondary,
             marginBottom: 10, display: "flex", alignItems: "center", gap: 6,
           }}>
             <span style={{
-              width: 8, height: 8, borderRadius: "50%",
+              width: 8, height: 8, borderRadius: 2,
               background: classDot[p] ?? T.textSecondary,
               display: "inline-block", flexShrink: 0,
             }} />
             {classes[p]}
           </div>
-          <TRow label="gini impurity" value={node.gini.toFixed(3)} T={T} />
-          <TRow label="samples"       value={node.n_samples}        T={T} />
-          <div style={{ height: "0.5px", background: T.separator, margin: "8px 0" }} />
+          <TRow label="gini" value={node.gini.toFixed(3)} T={T} />
+          <TRow label="samples" value={node.n_samples} T={T} />
+          <div style={{ height: 1, background: T.separator, margin: "8px 0" }} />
           {classes.map((c, idx) => (
-            <div key={c} style={{ display: "flex", justifyContent: "space-between", padding: "2.5px 0" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
+            <div key={c} style={{ display: "flex", justifyContent: "space-between", padding: "2.5px 0", gap: 18 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.textSecondary }}>
                 <span style={{
-                  width: 5, height: 5, borderRadius: "50%",
+                  width: 6, height: 6, borderRadius: 2,
                   background: classDot[idx] ?? T.textSecondary,
                   display: "inline-block",
                 }} />
-                class {c}
+                {c}
               </span>
-              <span style={{ fontSize: 11, fontFamily: '"SF Mono", Menlo, monospace', color: T.text }}>
+              <span style={{ fontSize: 11, fontFamily: FONT_MONO, color: T.text }}>
                 {node.counts?.[idx] ?? 0}
               </span>
             </div>
@@ -168,14 +112,14 @@ function Tooltip({ node, map, classes, T, classDot, classFill }) {
         <>
           <div style={{
             fontSize: 13, fontWeight: 500, color: T.text, marginBottom: 10,
-            fontFamily: '"SF Mono", Menlo, monospace',
+            fontFamily: FONT_MONO,
           }}>
             {sf(node.feature)} ≤ {node.threshold}
           </div>
-          <TRow label="gini impurity" value={node.gini.toFixed(3)} T={T} />
-          <TRow label="samples"       value={node.n_samples}        T={T} />
-          <div style={{ height: "0.5px", background: T.separator, margin: "8px 0" }} />
-          <TRow label="left branch"  value={map[node.left_child]?.n_samples}  T={T} />
+          <TRow label="gini" value={node.gini.toFixed(3)} T={T} />
+          <TRow label="samples" value={node.n_samples} T={T} />
+          <div style={{ height: 1, background: T.separator, margin: "8px 0" }} />
+          <TRow label="left branch" value={map[node.left_child]?.n_samples} T={T} />
           <TRow label="right branch" value={map[node.right_child]?.n_samples} T={T} />
         </>
       )}
@@ -183,22 +127,48 @@ function Tooltip({ node, map, classes, T, classDot, classFill }) {
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
-export default function MLVizTree({ data, dark, toggleDark }) {
-  const T           = dark ? DARK : LIGHT;
-  const classDot    = CLASS_COLORS;
-  const classFill   = T.classFill;
-  const classBorder = CLASS_COLORS;
+function ZoomButton({ onClick, label, children, T, wide }) {
+  return (
+    <button
+      onClick={onClick}
+      className="zoom-btn"
+      style={{
+        background: "transparent", border: "none",
+        padding: wide ? "5px 10px" : "5px 11px",
+        cursor: "pointer", fontSize: wide ? 11 : 14,
+        color: T.textSecondary, lineHeight: 1,
+        fontFamily: wide ? FONT_UI : FONT_MONO,
+      }}
+      aria-label={label}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Single-tree canvas renderer ──────────────────────────────────────────────
+// Model-agnostic: renders any sklearn-shaped tree (nodes + optional path).
+// Headers, panels, and ensemble chrome are owned by the view components.
+export default function MLVizTree({ nodes, path, classes, dark }) {
+  const T = getTheme(dark);
+  const classDot = getClassColors(dark);
+  const classFill = T.classFill;
+
+  const reduceMotion = useReducedMotion();
+  const tooltipTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.15, ease: [0.23, 1, 0.32, 1] };
+  const pathBarTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.2, ease: [0.23, 1, 0.32, 1] };
 
   const [hoveredNode, setHoveredNode] = useState(null);
-  const [tipPos, setTipPos]           = useState({ x: 0, y: 0 });
-  const [zoom, setZoom]               = useState(1);
+  const [zoom, setZoom] = useState(1);
   const containerRef = useRef(null);
+  const tipRef = useRef({ x: 0, y: 0 });
+  const tipDivRef = useRef(null);
 
-  const { map, svgW, svgH } = useMemo(
-    () => computeLayout(data.nodes),
-    [data.nodes]
-  );
+  const { map, svgW, svgH } = useMemo(() => computeLayout(nodes), [nodes]);
 
   useEffect(() => {
     if (!containerRef.current || !svgW) return;
@@ -214,18 +184,18 @@ export default function MLVizTree({ data, dark, toggleDark }) {
   };
 
   const pathIds = useMemo(
-    () => new Set((data.path ?? []).map((p) => p.node_id)),
-    [data.path]
+    () => new Set((path ?? []).map((p) => p.node_id)),
+    [path]
   );
 
   const pathEdges = useMemo(() => {
-    const s    = new Set();
-    const path = data.path ?? [];
-    for (let i = 0; i < path.length - 1; i++) {
-      s.add(`${path[i].node_id}-${path[i + 1].node_id}`);
+    const s = new Set();
+    const steps = path ?? [];
+    for (let i = 0; i < steps.length - 1; i++) {
+      s.add(`${steps[i].node_id}-${steps[i + 1].node_id}`);
     }
     return s;
-  }, [data.path]);
+  }, [path]);
 
   const edges = useMemo(() => {
     const list = [];
@@ -241,106 +211,37 @@ export default function MLVizTree({ data, dark, toggleDark }) {
     return list;
   }, [map, pathEdges]);
 
-  const pathSteps = (data.path ?? []).filter((p) => !p.leaf);
-  const leafStep  = (data.path ?? []).find((p) => p.leaf);
+  const pathSteps = (path ?? []).filter((p) => !p.leaf);
+  const leafStep  = (path ?? []).find((p) => p.leaf);
 
   const onMouseMove = (e) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    setTipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    tipRef.current = { x, y };
+    if (tipDivRef.current) {
+      tipDivRef.current.style.left = `${Math.min(x + 18, rect.width - 210)}px`;
+      tipDivRef.current.style.top = `${Math.max(y - 140, 8)}px`;
+    }
   };
 
   return (
     <div style={{
-      background: T.bg,
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif',
+      flex: 1, minHeight: 0, minWidth: 0,
       display: "flex", flexDirection: "column",
-      minHeight: "100vh",
+      fontFamily: FONT_UI,
     }}>
-
-      {/* ── Header ── */}
-      <div style={{
-        background: T.surface,
-        borderBottom: `0.5px solid ${T.border}`,
-        padding: "12px 20px",
-        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-      }}>
-        <span style={{ fontSize: 15, fontWeight: 600, color: T.text, letterSpacing: "-0.3px" }}>
-          mlviz
-        </span>
-        <Pill T={T}>{(data.model_type ?? "decision tree").replace(/_/g, " ")}</Pill>
-        <Pill T={T}>
-          {data.nodes.length} nodes · {data.nodes.filter((n) => n.leaf).length} leaves
-        </Pill>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
-          {data.classes.map((c, idx) => (
-            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.textSecondary }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: classDot[idx] ?? T.textSecondary, display: "inline-block" }} />
-              class {c}
-            </div>
-          ))}
-          {/* ── Zoom controls ── */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <button
-              onClick={zoomOut}
-              style={{
-                background: "none", border: `0.5px solid ${T.border}`, borderRadius: 6,
-                padding: "3px 9px", cursor: "pointer", fontSize: 15,
-                color: T.textSecondary, lineHeight: 1,
-              }}
-              aria-label="Zoom out"
-            >−</button>
-            <span style={{
-              fontSize: 11, color: T.textSecondary,
-              minWidth: 38, textAlign: "center",
-              fontFamily: '"SF Mono", Menlo, monospace',
-            }}>
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              onClick={zoomIn}
-              style={{
-                background: "none", border: `0.5px solid ${T.border}`, borderRadius: 6,
-                padding: "3px 9px", cursor: "pointer", fontSize: 15,
-                color: T.textSecondary, lineHeight: 1,
-              }}
-              aria-label="Zoom in"
-            >+</button>
-            <button
-              onClick={zoomFit}
-              style={{
-                background: "none", border: `0.5px solid ${T.border}`, borderRadius: 6,
-                padding: "3px 8px", cursor: "pointer", fontSize: 11,
-                color: T.textSecondary, letterSpacing: "0.1px",
-              }}
-              aria-label="Fit to screen"
-            >fit</button>
-          </div>
-
-          <button
-            onClick={toggleDark}
-            style={{
-              background: "none",
-              border: `0.5px solid ${T.border}`,
-              borderRadius: 8,
-              padding: "4px 10px",
-              cursor: "pointer",
-              fontSize: 11,
-              color: T.textSecondary,
-              letterSpacing: "0.1px",
-              marginLeft: 12,
-            }}
-            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            {dark ? "☀ Light" : "☾ Dark"}
-          </button>
-        </div>
-      </div>
 
       {/* ── Tree canvas ── */}
       <div
         ref={containerRef}
-        style={{ flex: 1, overflow: "auto", position: "relative", padding: "4px 0" }}
+        style={{
+          flex: 1, minHeight: 0, overflow: "auto", position: "relative",
+          background: T.canvas,
+          backgroundImage: `radial-gradient(circle, ${T.gridDot} 1px, transparent 1px)`,
+          backgroundSize: "24px 24px",
+        }}
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHoveredNode(null)}
       >
@@ -350,24 +251,24 @@ export default function MLVizTree({ data, dark, toggleDark }) {
           viewBox={`0 0 ${svgW} ${svgH}`}
           style={{ display: "block" }}
         >
-
           {/* Edges */}
-          {edges.map((e, i) => {
+          {edges.map((e) => {
             const midY = (e.from.py + NH + e.to.py) / 2;
-            const lx   = (e.from.cx + e.to.cx) / 2;
+            const lx = (e.from.cx + e.to.cx) / 2;
             return (
               <g key={`${e.from.node_id}-${e.to.node_id}`}>
                 <path
                   d={`M${e.from.cx},${e.from.py + NH} C${e.from.cx},${midY} ${e.to.cx},${midY} ${e.to.cx},${e.to.py}`}
                   fill="none"
-                  stroke={e.act ? T.blue : T.border}
-                  strokeWidth={e.act ? 2 : 1.5}
+                  stroke={e.act ? T.accent : T.nodeBorder}
+                  strokeWidth={e.act ? 2 : 1.25}
+                  style={{ transition: "stroke 180ms ease-out" }}
                 />
                 <text
-                  x={lx} y={midY - 4}
+                  x={lx} y={midY - 5}
                   textAnchor="middle" fontSize={9}
-                  fill={e.act ? T.blue : T.textTertiary}
-                  fontFamily="-apple-system, sans-serif"
+                  fill={e.act ? T.accent : T.textTertiary}
+                  fontFamily={FONT_MONO}
                 >
                   {e.lbl}
                 </text>
@@ -379,34 +280,41 @@ export default function MLVizTree({ data, dark, toggleDark }) {
           {Object.values(map).map((n) => {
             const act = pathIds.has(n.node_id);
             const hov = hoveredNode?.node_id === n.node_id;
-            const p   = n.leaf ? n.prediction : null;
+            const p = n.leaf ? n.prediction : null;
 
-            const fill   = n.leaf ? (act ? (classFill[p]   ?? T.surface)  : T.surface) : (act ? T.blueFill : T.surface);
-            const stroke = n.leaf ? (act ? (classBorder[p] ?? T.border)   : hov ? T.borderHover : T.border)
-                                  : (act ? T.blue : hov ? T.borderHover : T.border);
+            const fill = n.leaf
+              ? (act ? (classFill[p] ?? T.nodeFill) : T.nodeFill)
+              : (act ? T.accentFill : T.nodeFill);
+            const stroke = n.leaf
+              ? (act ? (classDot[p] ?? T.nodeBorder) : hov ? T.nodeBorderHover : T.nodeBorder)
+              : (act ? T.accent : hov ? T.nodeBorderHover : T.nodeBorder);
             const sw = act ? 1.5 : 1;
 
             return (
               <g
                 key={n.node_id}
-                style={{ cursor: "default" }}
+                style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHoveredNode(n)}
                 onMouseLeave={() => setHoveredNode(null)}
               >
                 <rect
-                  x={n.px} y={n.py} width={NW} height={NH} rx={11}
+                  x={n.px} y={n.py} width={NW} height={NH} rx={8}
                   fill={fill} stroke={stroke} strokeWidth={sw}
+                  style={{ transition: "fill 180ms ease-out, stroke 180ms ease-out" }}
                 />
                 {n.leaf ? (
                   <>
-                    <circle cx={n.px + 18} cy={n.cy} r={4.5} fill={classDot[p] ?? T.textSecondary} />
+                    <rect
+                      x={n.px + 14} y={n.cy - 4} width={8} height={8} rx={2}
+                      fill={classDot[p] ?? T.textSecondary}
+                    />
                     <text
                       x={n.px + 31} y={n.cy + 4}
                       fontSize={12} fontWeight="500"
                       fill={act ? T.text : T.textSecondary}
-                      fontFamily="-apple-system, sans-serif"
+                      fontFamily={FONT_UI}
                     >
-                      {data.classes[p]}
+                      {classes[p]}
                     </text>
                   </>
                 ) : (
@@ -414,8 +322,8 @@ export default function MLVizTree({ data, dark, toggleDark }) {
                     x={n.cx} y={n.cy + 4}
                     textAnchor="middle"
                     fontSize={12} fontWeight={act ? "500" : "400"}
-                    fill={act ? T.blue : T.text}
-                    fontFamily='"SF Mono", Menlo, "Courier New", monospace'
+                    fill={act ? T.accent : T.text}
+                    fontFamily={FONT_MONO}
                   >
                     {clampLabel(`${sf(n.feature)} ≤ ${n.threshold}`)}
                   </text>
@@ -425,30 +333,73 @@ export default function MLVizTree({ data, dark, toggleDark }) {
           })}
         </svg>
 
-        {/* ── Floating tooltip ── */}
-        {hoveredNode && (
-          <div style={{
-            position: "absolute",
-            left: Math.min(tipPos.x + 18, svgW * zoom - 200),
-            top: Math.max(tipPos.y - 140, 8),
-            pointerEvents: "none",
-            zIndex: 20,
+        {/* ── Zoom controls (floating, bottom-right) ── */}
+        <div style={{
+          position: "absolute", right: 14, bottom: 14,
+          display: "flex", alignItems: "center",
+          background: T.surface,
+          border: `1px solid ${T.border}`,
+          borderRadius: 7,
+          boxShadow: "0 2px 12px rgba(0, 0, 0, 0.18)",
+          zIndex: 10,
+        }}>
+          <ZoomButton onClick={zoomOut} label="Zoom out" T={T}>−</ZoomButton>
+          <span style={{
+            fontSize: 11, color: T.textSecondary,
+            minWidth: 42, textAlign: "center",
+            fontFamily: FONT_MONO,
+            borderLeft: `1px solid ${T.separator}`,
+            borderRight: `1px solid ${T.separator}`,
+            padding: "5px 0",
           }}>
-            <Tooltip node={hoveredNode} map={map} classes={data.classes} T={T} classDot={classDot} classFill={classFill} />
-          </div>
-        )}
+            {Math.round(zoom * 100)}%
+          </span>
+          <ZoomButton onClick={zoomIn} label="Zoom in" T={T}>+</ZoomButton>
+          <span style={{ width: 1, height: 16, background: T.separator }} />
+          <ZoomButton onClick={zoomFit} label="Fit to screen" T={T} wide>fit</ZoomButton>
+        </div>
+
+        {/* ── Floating tooltip ── */}
+        <AnimatePresence>
+          {hoveredNode && (
+            <motion.div
+              ref={tipDivRef}
+              key={hoveredNode.node_id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={tooltipTransition}
+              style={{
+                position: "absolute",
+                left: tipRef.current.x + 18,
+                top: Math.max(tipRef.current.y - 140, 8),
+                pointerEvents: "none",
+                zIndex: 20,
+                transformOrigin: "top left",
+              }}
+            >
+              <Tooltip node={hoveredNode} map={map} classes={classes} T={T} classDot={classDot} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── Path bar (only rendered when a query point was passed) ── */}
-      {data.path && (
-        <div style={{
-          background: T.surface,
-          borderTop: `0.5px solid ${T.border}`,
-          padding: "10px 20px",
-          display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-        }}>
+      {path && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={pathBarTransition}
+          style={{
+            background: T.surface,
+            borderTop: `1px solid ${T.border}`,
+            padding: "9px 16px",
+            display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+            flexShrink: 0,
+          }}
+        >
           <span style={{
-            fontSize: 10, color: T.textTertiary,
+            fontSize: 10, color: T.textTertiary, fontWeight: 500,
             textTransform: "uppercase", letterSpacing: "0.6px", marginRight: 4,
           }}>
             path
@@ -457,11 +408,11 @@ export default function MLVizTree({ data, dark, toggleDark }) {
           {pathSteps.map((s, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
               {i > 0 && <span style={{ color: T.textTertiary, fontSize: 12 }}>→</span>}
-              <span style={{ fontSize: 12, fontFamily: '"SF Mono", Menlo, monospace', color: T.text }}>
+              <span style={{ fontSize: 12, fontFamily: FONT_MONO, color: T.text }}>
                 {sf(s.feature)} ≤ {s.threshold}
               </span>
               <span style={{
-                fontSize: 12, fontFamily: '"SF Mono", Menlo, monospace',
+                fontSize: 12, fontFamily: FONT_MONO,
                 color: s.went_left ? T.green : T.red,
                 fontWeight: 500,
               }}>
@@ -475,18 +426,17 @@ export default function MLVizTree({ data, dark, toggleDark }) {
               <span style={{ color: T.textTertiary, fontSize: 12 }}>→</span>
               <span style={{
                 fontSize: 12, fontWeight: 500,
-                background: classFill[leafStep.prediction]   ?? T.surfaceSecondary,
-                border: `0.5px solid ${classBorder[leafStep.prediction] ?? T.border}`,
-                borderRadius: 7, padding: "3px 11px",
-                color: classBorder[leafStep.prediction] ?? T.text,
+                background: classFill[leafStep.prediction] ?? T.surfaceSecondary,
+                border: `1px solid ${classDot[leafStep.prediction] ?? T.border}`,
+                borderRadius: 5, padding: "2px 10px",
+                color: classDot[leafStep.prediction] ?? T.text,
               }}>
-                {data.classes[leafStep.prediction]}
+                {classes[leafStep.prediction]}
               </span>
             </>
           )}
-        </div>
+        </motion.div>
       )}
-
     </div>
   );
 }
