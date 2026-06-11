@@ -186,7 +186,7 @@ tests/
 - Git
 
 **Notes**
-- `venv` setup works well for running your own `.py` scripts. → [Venv setup](#1-venv-setup)
+- `venv` setup works well for running your own `.py` scripts. → [Venv setup](#1-venv-setup-for-py)
 - For `.ipynb` files such as `demo.ipynb`, use conda. → [Conda setup](#2-conda-setup-best-for-both-py-and-ipynb-files)
 - 
 ---
