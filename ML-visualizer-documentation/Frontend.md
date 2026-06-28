@@ -1,91 +1,148 @@
 ---
-tags: [mlviz, python, v1, frontend, react]
-status: complete
+tags: [mlviz, frontend, react]
+status: current
+version: v0.2.3
 ---
 
 # Frontend (`frontend/`)
 
 ## What It Does
 
-A React + Vite app that fetches the model JSON from the FastAPI server and renders an interactive decision tree diagram in the browser. The user never sees Node.js or npm — the built output ships bundled inside the Python package.
+A React + Vite app that fetches model JSON from the FastAPI server and renders an interactive, model-appropriate visualisation. The built output ships bundled inside the Python package — no Node.js required at runtime.
 
 ## Tech Stack
 
 | Tool | Role |
 |------|------|
 | React | component rendering |
-| Vite | development server + production bundler |
-| CSS / SVG | tree layout and path highlighting |
+| Vite | dev server + production bundler |
+| Framer Motion | HTML-layer animations only |
+| SVG / HTML Canvas | tree diagrams and scatter plots |
 
-## What It Renders
+## Routing
 
-### Full Tree Diagram
+`App.jsx` fetches `/api/model` on mount to get `{model_type, endpoint}`. It then routes to the appropriate view:
 
-Every node shown with:
-- Feature name and threshold (e.g. `petal_length ≤ 2.45`)
-- Sample count at that node
-- Gini impurity
-- Left = condition true, right = condition false
-
-Leaf nodes shown with:
-- Class distribution (counts per class)
-- Predicted class name (resolved from `classes` array via the prediction index)
-
-### Decision Path Highlighting
-
-When a query point is present (`path` is not null), every node on the path from root to leaf is highlighted. At each highlighted node:
-- The question asked
-- The query point's value for that feature
-- Which direction it went (left/right) and why
-
-### Data Fetching
-
-On mount, React fetches `GET /api/tree` from the local FastAPI server. The `nodes` array is converted to a `Map<node_id, node>` for O(1) lookup. The `path` array is converted to a `Set<node_id>` — checking whether a node is on the path is a single `has()` call.
-
-## Bundle Approach
-
-Built with `npm run build` inside `mlviz/frontend/`. Output goes to `mlviz/frontend/dist/`. This `dist/` folder is committed and ships inside the Python package. FastAPI serves it as static files.
-
-No Node.js is needed at runtime — only at build time by the mlviz developer.
-
-## Status
-
-Complete — Session 3 (tree + path), Session 4 (dark mode), Session 5 (zoom + label truncation).
-
-## What was built
-
-`mlviz/frontend/src/MLVizTree.jsx` — presentational component:
-- SVG tree rendered from flat node list using leaf-counting layout algorithm
-- Apple HIG design tokens — `LIGHT` and `DARK` token objects, resolved per mode at render time
-- Path highlighting via `Set<node_id>` — blue fill + border on active nodes, blue strokes on edges
-- Floating tooltip on hover showing gini, samples, class counts per node
-- Path bar at bottom (only when `data.path` is not null)
-- **Dark mode** — `LIGHT`/`DARK` token objects, toggled via button, persisted to `localStorage`, OS preference detected on first load
-- **Zoom controls** — `+` / `−` / `fit` buttons in header; SVG uses `viewBox` so all coordinates stay unscaled; auto-fits to container width on mount via `useEffect`
-- **Label truncation** — `clampLabel(str, max=19)` applied to split node text; full label always visible in tooltip
-
-`mlviz/frontend/src/App.jsx` — data owner:
-- Fetches `GET /api/tree` on mount
-- Three states: loading / error / ready (all three respect dark mode)
-- Owns `dark` state and `toggleDark` callback, passed down to `MLVizTree`
-- `initDark()` reads `localStorage` on mount, falls back to `prefers-color-scheme`
-
-Built with `npm run build` → `dist/` served as static files by FastAPI. 14 tests passing.
-
-## Design Token System
-
-Two token objects replace the original single `T` constant:
-
-```js
-const LIGHT = { bg, surface, text, ... , classFill: [...] }
-const DARK  = { bg, surface, text, ... , classFill: [...] }
+```
+model_type === "decision_tree"  →  <DecisionTreeView>
+model_type === "random_forest"  →  <RandomForestView>
+model_type === "knn"            →  <KnnView>
+model_type === "svm"            →  <SvmView>
 ```
 
-Inside the component: `const T = dark ? DARK : LIGHT`. All sub-components (`Pill`, `TRow`, `Tooltip`) receive `T` as a prop so they react to mode changes.
+Each view fetches its own endpoint (`/api/tree`, `/api/forest`, etc.) and owns its full layout — header, main canvas, sidebar.
 
-Class accent colours (`CLASS_COLORS`) are always the same saturated values — only the fill backgrounds differ between light and dark.
+## Design System (`theme.js`)
+
+Two token objects, resolved at render time via `getTheme(dark)`:
+
+```js
+const DARK  = { bg: "#09090B", canvas: "#0C0C0E", accent: "#7B86E2", ... }
+const LIGHT = { bg: "#FAFAFA", canvas: "#FCFCFC", accent: "#5E6AD2", ... }
+```
+
+Key tokens: `bg`, `canvas`, `gridDot`, `surface`, `border`, `text`, `textSecondary`, `textTertiary`, `accent`, `accentFill`, `separator`, `green`, `red`.
+
+Class accent colours are separate constants — `CLASS_COLORS` (dark) and `CLASS_COLORS_LIGHT` — 6 classes. Resolved via `getClassColors(dark)`.
+
+All colour changes happen in `theme.js`. Nothing else holds raw hex values.
+
+## Views
+
+### `DecisionTreeView`
+
+- `AppHeader` with model/task/dataset pills and class legend
+- `MLVizTree` canvas (single tree)
+- Feature importance sidebar panel
+
+### `RandomForestView`
+
+- `ForestHeader` (model pills, OOB metric card, feature importance, class legend)
+- `ForestTreeBrowser` — horizontal strip of trees; click to inspect individual tree
+- `MLVizTree` canvas — renders whichever tree is selected
+- Ensemble sidebar: vote distribution (classification) or prediction distribution (regression)
+
+### `KnnView`
+
+- `AppHeader` with model/task/dataset pills
+- Classification: `KnnProjectionPlot` canvas (PCA scatter with optional boundary glow)
+- Regression: `KnnRegressionExplanation` primary view with one query-local true-distance neighbour map, all training rows, shared zoom/pan controls, and weighted-average breakdown
+- Sidebar: `VotePanel` (classification) / prediction value (regression), weighted-average panel (regression), model summary, `KnnVoteBarChart` / `KnnRegressionTargetStrip`
+- Collapsible neighbour table at bottom
+
+### `SvmView`
+
+- `AppHeader` with model/task/dataset pills
+- `SvmProjectionPlot` canvas (PCA scatter with SVM margin lines and optional boundary glow)
+- Sidebar: `PredictionPanel`, model summary, `SvmDecisionScoreChart` / `SvmRegressionValueStrip`
+- Collapsible support vector table at bottom
+
+## `MLVizTree.jsx` — Tree Canvas Renderer
+
+Model-agnostic. Props: `{nodes, path, classes, dark, taskType}`.
+
+- `computeLayout()` — two-pass SVG layout: leaf-count x-position pass then depth y-position pass
+- Node rendering: split nodes show feature/threshold/gini/samples; leaf nodes show class distribution (classification) or regression value
+- Path highlighting via `Set<node_id>` — indigo fill + border on active nodes, indigo strokes on edges
+- Floating tooltip on hover
+- Path breadcrumb bar at bottom
+- Zoom controls (`+` / `−` / auto-fit)
+
+Both `DecisionTreeView` and `RandomForestView` use this component. KNN and SVM use `NonTreeVisuals.jsx` instead.
+
+## `NonTreeVisuals.jsx` — Canvas Layer for KNN and SVM
+
+Shared canvas module for non-tree model visualisations.
+
+**`KnnProjectionPlot`**
+- PCA 2D scatter of all training points
+- Non-neighbour points: radius 4, 0.6 opacity, surface stroke
+- Neighbour points: radius 6, full opacity, white ring stroke (lineWidth 1.5)
+- Neighbour connection lines: white at 0.2 opacity
+- Query point: amber `#F5A524` crossed lines (lineWidth 2.5, size 8px)
+- Classification boundary toggle (top-left pill): soft glow via BFS distance transform when ON — alpha lerped 0.22→0.04 near boundary, 0.06 farther
+- KNN regression caveat label (bottom-left, 10px `textTertiary`): "positions are PCA projections — neighbour distances are computed in the original feature space"
+
+**`KnnRegressionExplanation`**
+- Primary KNN regression explanation surface
+- `KnnLocalNeighborPlot` shows the query, selected neighbours, and all training rows using metric MDS over original feature-space distances
+- The query marker is intentionally compact so it does not obscure nearby datapoints
+- The graph uses the same interaction hook as the classifier plot, so ctrl-scroll zoom, drag pan, double-click reset, and button controls behave consistently
+- Hover uses nearest-point lookup across the dense SVG plot so context rows, selected neighbours, and the query can all show tooltip details
+- `KnnWeightedAveragePanel` lives in the right sidebar and owns selected-neighbour target, distance, raw weight, contribution, and weighted-average rows
+- The old embedded PCA overview is no longer shown in this regression layout because it can make true neighbours look artificially far apart
+
+**`SvmProjectionPlot`**
+- PCA 2D scatter; non-SV points at 0.6 opacity r=4, SVs at full opacity r=6 with white ring
+- SVM margin boundary lines (`margin_regions`) always visible
+- Same soft boundary glow toggle as KNN
+- Query point rendered as amber crossed lines
+
+**Shared utilities**: `hexToRgb()`, `mixHex()`, `extent()`, `fmt()`, `ChartFrame()`, `CanvasTooltip()`
+
+## `AppHeader.jsx`
+
+Shared header shell used by all four views. Slots: `pills` (left), `right` (legend + toggle).
+
+Sub-components: `Pill`, `ClassLegend`, `ThemeToggle` — all exported from `AppHeader.jsx`.
+
+## Animation Rules
+
+- Framer Motion for HTML elements only — never on SVG
+- CSS `transition` on SVG `<rect>` fill/stroke only
+- Ease-out curves, sub-300ms durations, no `transition: all`
+- `useReducedMotion()` respected
+
+## Dark Mode
+
+`App.jsx` owns `dark` state. Initialised from `localStorage` → falls back to `prefers-color-scheme`. Persisted to `localStorage` on toggle. All components receive `dark` as a prop; theme is resolved locally via `getTheme(dark)`.
+
+## Bundle
+
+`npm run build` inside `mlviz/frontend/` writes to `mlviz/frontend/dist/`. This directory is committed and ships with the package. **Always rebuild before committing frontend changes.**
 
 ## Related Notes
 
 - [[Server]] — provides the JSON this frontend fetches
-- [[Architecture]] — how the frontend fits into the full call sequence
+- [[Architecture]] — call sequence, manifest routing
+- [[mlviz Overview]] — full build status

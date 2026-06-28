@@ -1,6 +1,9 @@
 import pytest
+import numpy as np
+from sklearn.datasets import load_diabetes
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
 
 
 @pytest.fixture
@@ -76,7 +79,7 @@ def test_random_forest_tree_nodes_match_dt_shape(iris_forest):
     from mlviz.extractors.random_forest import serialize
     result = serialize(model, X, y, query=X[0], feature_names=feature_names)
     base_keys = {
-        "node_id", "n_samples", "gini", "leaf",
+        "node_id", "n_samples", "impurity", "gini", "leaf",
         "feature", "threshold", "left_child", "right_child",
     }
     tree = result["trees"][0]
@@ -102,3 +105,59 @@ def test_random_forest_winning_class_matches_model_predict(iris_forest):
     # majority vote of trees should match index of max votes
     top = max(vote["class_votes"], key=lambda c: c["votes"])
     assert vote["winning_class_index"] == top["class_index"]
+
+
+def test_random_forest_regressor_serializes_prediction_distribution():
+    diabetes = load_diabetes()
+    model = RandomForestRegressor(n_estimators=7, max_depth=3, random_state=0)
+    model.fit(diabetes.data, diabetes.target)
+
+    from mlviz.extractors.random_forest import serialize
+
+    result = serialize(
+        model,
+        diabetes.data,
+        diabetes.target,
+        query=diabetes.data[0],
+        feature_names=diabetes.feature_names,
+    )
+
+    tree_predictions = np.array([
+        estimator.predict([diabetes.data[0]])[0]
+        for estimator in model.estimators_
+    ])
+
+    assert result["task_type"] == "regression"
+    assert "classes" not in result
+    assert result["vote_distribution"] is None
+    assert result["prediction_distribution"]["total_trees"] == model.n_estimators
+    assert result["prediction_distribution"]["mean"] == pytest.approx(
+        model.predict([diabetes.data[0]])[0],
+        rel=1e-6,
+    )
+    assert result["prediction_distribution"]["min"] == pytest.approx(tree_predictions.min(), rel=1e-6)
+    assert result["prediction_distribution"]["max"] == pytest.approx(tree_predictions.max(), rel=1e-6)
+    assert result["prediction_distribution"]["std"] == pytest.approx(tree_predictions.std(), rel=1e-6)
+    assert len(result["prediction_distribution"]["tree_predictions"]) == model.n_estimators
+
+
+def test_random_forest_regressor_tree_predictions_are_numeric():
+    diabetes = load_diabetes()
+    model = RandomForestRegressor(n_estimators=3, max_depth=2, random_state=0)
+    model.fit(diabetes.data, diabetes.target)
+
+    from mlviz.extractors.random_forest import serialize
+
+    result = serialize(
+        model,
+        diabetes.data,
+        diabetes.target,
+        query=diabetes.data[0],
+        feature_names=diabetes.feature_names,
+    )
+
+    for tree, estimator in zip(result["trees"], model.estimators_):
+        expected = estimator.predict([diabetes.data[0]])[0]
+        assert tree["prediction"]["value"] == pytest.approx(expected, rel=1e-6)
+        assert tree["prediction"]["leaf_value"] == pytest.approx(expected, rel=1e-6)
+        assert tree["path"][-1]["prediction_value"] == pytest.approx(expected, rel=1e-6)

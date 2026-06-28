@@ -5,6 +5,7 @@ import ForestHeader from "../components/forest/ForestHeader";
 import ForestTreeBrowser from "../components/forest/ForestTreeBrowser";
 import FeatureImportancePanel from "../components/forest/FeatureImportancePanel";
 import VoteDistributionPanel from "../components/forest/VoteDistributionPanel";
+import PredictionDistributionPanel from "../components/forest/PredictionDistributionPanel";
 import OobMetricCard from "../components/forest/OobMetricCard";
 import { getTheme, FONT_UI } from "../theme";
 
@@ -13,6 +14,8 @@ const SIDEBAR_WIDTH = 296;
 export default function RandomForestView({ data, dark, toggleDark }) {
   const T = getTheme(dark);
   const reduceMotion = useReducedMotion();
+  const taskType = data.task_type ?? "classification";
+  const isRegression = taskType === "regression";
 
   const [selectedTreeId, setSelectedTreeId] = useState(
     data.summary.default_tree_id ?? 0
@@ -48,6 +51,7 @@ export default function RandomForestView({ data, dark, toggleDark }) {
         setSelectedTreeId={setSelectedTreeId}
         classes={data.classes}
         dark={dark}
+        taskType={taskType}
       />
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -62,6 +66,7 @@ export default function RandomForestView({ data, dark, toggleDark }) {
             path={selectedTree.path}
             classes={data.classes}
             dark={dark}
+            taskType={taskType}
           />
         </div>
 
@@ -75,13 +80,20 @@ export default function RandomForestView({ data, dark, toggleDark }) {
           display: "flex", flexDirection: "column", gap: 10,
         }}>
           <motion.div custom={0} initial="hidden" animate="show" variants={panelVariants}>
-            <VoteDistributionPanel voteDistribution={data.vote_distribution} dark={dark} />
+            {isRegression ? (
+              <PredictionDistributionPanel
+                predictionDistribution={data.prediction_distribution}
+                dark={dark}
+              />
+            ) : (
+              <VoteDistributionPanel voteDistribution={data.vote_distribution} dark={dark} />
+            )}
           </motion.div>
           <motion.div custom={1} initial="hidden" animate="show" variants={panelVariants}>
             <FeatureImportancePanel items={data.feature_importances} dark={dark} />
           </motion.div>
           <motion.div custom={2} initial="hidden" animate="show" variants={panelVariants}>
-            <OobMetricCard oob={data.oob} dark={dark} />
+            <OobMetricCard oob={data.oob} dark={dark} taskType={taskType} />
           </motion.div>
         </div>
       </div>

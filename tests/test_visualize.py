@@ -3,8 +3,14 @@ import types
 
 import pytest
 from sklearn.datasets import load_iris
+from sklearn.datasets import load_diabetes
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.svm import SVC
+from sklearn.svm import SVR
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeRegressor
 
 
 def test_visualize_raises_if_not_fitted():
@@ -18,16 +24,18 @@ def test_visualize_raises_if_not_fitted():
 def test_visualize_raises_for_unsupported_model():
     from mlviz import visualize
     iris = load_iris()
-    model = KNeighborsClassifier()
+    from sklearn.linear_model import LogisticRegression
+    model = LogisticRegression(max_iter=200)
     model.fit(iris.data, iris.target)
-    with pytest.raises(NotImplementedError, match="Only DecisionTreeClassifier"):
+    with pytest.raises(NotImplementedError, match="KNeighborsClassifier"):
+        visualize(model, iris.data, iris.target)
+    with pytest.raises(NotImplementedError, match="SVR"):
         visualize(model, iris.data, iris.target)
 
 
 def test_visualize_supports_random_forest(monkeypatch):
     import sys
     import httpx
-    from sklearn.ensemble import RandomForestClassifier
     from mlviz import visualize
 
     # Run in daemon/interactive mode so visualize() returns without blocking
@@ -49,6 +57,110 @@ def test_visualize_supports_random_forest(monkeypatch):
     forest = httpx.get(f"{url}/api/forest").json()
     assert forest["model_type"] == "random_forest"
     assert forest["vote_distribution"] is not None
+
+
+def test_visualize_supports_knn_classifier(monkeypatch):
+    import sys
+    import httpx
+    from mlviz import visualize
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    iris = load_iris()
+    model = KNeighborsClassifier(n_neighbors=3)
+    model.fit(iris.data, iris.target)
+
+    visualize(model, iris.data, iris.target, query=iris.data[0])
+
+    url = opened_urls[0]
+    manifest = httpx.get(f"{url}/api/model").json()
+    assert manifest == {"model_type": "knn", "endpoint": "/api/knn"}
+    payload = httpx.get(f"{url}/api/knn").json()
+    assert payload["model_type"] == "knn"
+    assert payload["task_type"] == "classification"
+    assert payload["prediction"]["class_label"] == model.predict([iris.data[0]])[0]
+
+
+def test_visualize_supports_knn_regressor(monkeypatch):
+    import sys
+    import httpx
+    from mlviz import visualize
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    diabetes = load_diabetes()
+    model = KNeighborsRegressor(n_neighbors=4)
+    model.fit(diabetes.data, diabetes.target)
+
+    visualize(model, diabetes.data, diabetes.target, query=diabetes.data[0])
+
+    url = opened_urls[0]
+    manifest = httpx.get(f"{url}/api/model").json()
+    assert manifest == {"model_type": "knn", "endpoint": "/api/knn"}
+    payload = httpx.get(f"{url}/api/knn").json()
+    assert payload["task_type"] == "regression"
+    assert payload["prediction"]["value"] == pytest.approx(
+        model.predict([diabetes.data[0]])[0],
+        rel=1e-6,
+    )
+
+
+def test_visualize_supports_svc(monkeypatch):
+    import sys
+    import httpx
+    from mlviz import visualize
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    iris = load_iris()
+    model = SVC(kernel="linear", probability=True, random_state=0)
+    model.fit(iris.data, iris.target)
+
+    visualize(model, iris.data, iris.target, query=iris.data[0])
+
+    url = opened_urls[0]
+    manifest = httpx.get(f"{url}/api/model").json()
+    assert manifest == {"model_type": "svm", "endpoint": "/api/svm"}
+    payload = httpx.get(f"{url}/api/svm").json()
+    assert payload["model_type"] == "svm"
+    assert payload["task_type"] == "classification"
+    assert payload["prediction"]["class_label"] == model.predict([iris.data[0]])[0]
+
+
+def test_visualize_supports_svr(monkeypatch):
+    import sys
+    import httpx
+    from mlviz import visualize
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    diabetes = load_diabetes()
+    model = SVR(kernel="rbf", C=10.0)
+    model.fit(diabetes.data, diabetes.target)
+
+    visualize(model, diabetes.data, diabetes.target, query=diabetes.data[0])
+
+    url = opened_urls[0]
+    manifest = httpx.get(f"{url}/api/model").json()
+    assert manifest == {"model_type": "svm", "endpoint": "/api/svm"}
+    payload = httpx.get(f"{url}/api/svm").json()
+    assert payload["task_type"] == "regression"
+    assert payload["prediction"]["value"] == pytest.approx(
+        model.predict([diabetes.data[0]])[0],
+        rel=1e-6,
+    )
 
 
 def test_visualize_random_forest_includes_dataset_name(monkeypatch):
@@ -161,6 +273,79 @@ def test_visualize_decision_tree_includes_dataset_name(monkeypatch):
     url = opened_urls[0]
     payload = httpx.get(f"{url}/api/tree").json()
     assert payload["dataset_name"] == "iris"
+
+
+def test_visualize_supports_decision_tree_regressor(monkeypatch):
+    import sys
+    import httpx
+    from mlviz import visualize
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    diabetes = load_diabetes()
+    model = DecisionTreeRegressor(max_depth=3, random_state=0)
+    model.fit(diabetes.data, diabetes.target)
+
+    visualize(
+        model,
+        diabetes.data,
+        diabetes.target,
+        query=diabetes.data[0],
+        feature_names=diabetes.feature_names,
+        dataset_name="diabetes",
+    )
+
+    url = opened_urls[0]
+    manifest = httpx.get(f"{url}/api/model").json()
+    assert manifest == {"model_type": "decision_tree", "endpoint": "/api/tree"}
+    payload = httpx.get(f"{url}/api/tree").json()
+    assert payload["model_type"] == "decision_tree"
+    assert payload["task_type"] == "regression"
+    assert payload["dataset_name"] == "diabetes"
+    assert payload["path"][-1]["prediction_value"] == pytest.approx(
+        model.predict([diabetes.data[0]])[0],
+        rel=1e-6,
+    )
+
+
+def test_visualize_supports_random_forest_regressor(monkeypatch):
+    import sys
+    import httpx
+    from sklearn.ensemble import RandomForestRegressor
+    from mlviz import visualize
+
+    monkeypatch.setitem(sys.modules, "ipykernel", types.ModuleType("ipykernel"))
+
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    diabetes = load_diabetes()
+    model = RandomForestRegressor(n_estimators=5, max_depth=3, random_state=0)
+    model.fit(diabetes.data, diabetes.target)
+
+    visualize(
+        model,
+        diabetes.data,
+        diabetes.target,
+        query=diabetes.data[0],
+        feature_names=diabetes.feature_names,
+        dataset_name="diabetes",
+    )
+
+    url = opened_urls[0]
+    manifest = httpx.get(f"{url}/api/model").json()
+    assert manifest == {"model_type": "random_forest", "endpoint": "/api/forest"}
+    payload = httpx.get(f"{url}/api/forest").json()
+    assert payload["model_type"] == "random_forest"
+    assert payload["task_type"] == "regression"
+    assert payload["dataset_name"] == "diabetes"
+    assert payload["prediction_distribution"]["mean"] == pytest.approx(
+        model.predict([diabetes.data[0]])[0],
+        rel=1e-6,
+    )
 
 
 def test_is_interactive_false_without_ipykernel(monkeypatch):

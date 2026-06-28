@@ -7,9 +7,13 @@ display any estimator without special-casing.
 
 from collections import Counter
 
+import numpy as np
+
 from mlviz.extractors.shared import (
+    model_task_type,
     normalize_query_vector,
     resolve_feature_names,
+    serialize_query,
     serialize_sklearn_tree,
     trace_sklearn_path,
 )
@@ -24,15 +28,17 @@ def _serialize_summary(model):
     max_features = model.max_features
     if hasattr(max_features, "item"):
         max_features = max_features.item()
-    return {
+    summary = {
         "n_estimators": int(model.n_estimators),
         "n_features": int(model.n_features_in_),
-        "n_classes": int(len(model.classes_)),
         "criterion": model.criterion,
         "bootstrap": bool(model.bootstrap),
         "max_features": max_features,
         "default_tree_id": 0,
     }
+    if hasattr(model, "classes_"):
+        summary["n_classes"] = int(len(model.classes_))
+    return summary
 
 
 def _serialize_importances(model, names):
@@ -47,25 +53,13 @@ def _serialize_importances(model, names):
     return sorted(items, key=lambda item: item["importance"], reverse=True)
 
 
-def _serialize_oob(model):
+def _serialize_oob(model, task_type):
     if getattr(model, "oob_score_", None) is None:
         return {"available": False, "score": None, "error": None}
     score = float(model.oob_score_)
+    if task_type == "regression":
+        return {"available": True, "score": score, "error": None}
     return {"available": True, "score": score, "error": 1.0 - score}
-
-
-def _serialize_query(names, query_vector):
-    return {
-        "provided": True,
-        "feature_values": [
-            {
-                "feature_index": i,
-                "feature_name": names[i],
-                "value": float(query_vector[i]),
-            }
-            for i in range(len(names))
-        ],
-    }
 
 
 def _serialize_vote_distribution(model, tree_predictions):
@@ -96,7 +90,27 @@ def _serialize_vote_distribution(model, tree_predictions):
     }
 
 
+def _serialize_prediction_distribution(model, query_vector, tree_predictions):
+    values = np.asarray(tree_predictions, dtype=float)
+    ensemble_prediction = float(model.predict([query_vector])[0])
+    return {
+        "mean": ensemble_prediction,
+        "min": float(values.min()),
+        "max": float(values.max()),
+        "std": float(values.std()),
+        "total_trees": int(len(tree_predictions)),
+        "tree_predictions": [
+            {
+                "tree_id": tree_id,
+                "value": float(value),
+            }
+            for tree_id, value in enumerate(tree_predictions)
+        ],
+    }
+
+
 def serialize(model, X_train, y_train, query=None, feature_names=None):
+    task_type = model_task_type(model)
     names = resolve_feature_names(model, X_train, feature_names)
     query_vector = None if query is None else normalize_query_vector(query, len(names))
 
@@ -107,37 +121,59 @@ def serialize(model, X_train, y_train, query=None, feature_names=None):
         path = None
         prediction = None
         if query_vector is not None:
-            path = trace_sklearn_path(tree, names, query_vector)
+            path = trace_sklearn_path(tree, names, query_vector, task_type=task_type)
             leaf = path[-1]
-            class_index = leaf["prediction"]
-            prediction = {
-                "class_index": int(class_index),
-                "class_label": _class_label(model, class_index),
-                "leaf_counts": leaf["counts"],
-            }
-            tree_predictions.append(class_index)
+            if task_type == "classification":
+                class_index = leaf["prediction"]
+                prediction = {
+                    "class_index": int(class_index),
+                    "class_label": _class_label(model, class_index),
+                    "leaf_counts": leaf["counts"],
+                }
+                tree_predictions.append(class_index)
+            else:
+                value = leaf["prediction_value"]
+                prediction = {
+                    "value": float(value),
+                    "leaf_value": float(value),
+                }
+                tree_predictions.append(value)
         trees.append({
             "tree_id": tree_id,
             "node_count": int(tree.node_count),
             "n_leaves": int(tree.n_leaves),
             "max_depth": int(tree.max_depth),
             "prediction": prediction,
-            "nodes": serialize_sklearn_tree(tree, names),
+            "nodes": serialize_sklearn_tree(tree, names, task_type=task_type),
             "path": path,
         })
 
-    return {
+    payload = {
         "model_type": "random_forest",
+        "task_type": task_type,
         "model_family": "tree_ensemble",
-        "classes": model.classes_.tolist(),
         "feature_names": names,
         "summary": _serialize_summary(model),
         "feature_importances": _serialize_importances(model, names),
-        "oob": _serialize_oob(model),
-        "query": None if query_vector is None else _serialize_query(names, query_vector),
-        "vote_distribution": (
-            None if query_vector is None
-            else _serialize_vote_distribution(model, tree_predictions)
-        ),
+        "oob": _serialize_oob(model, task_type),
+        "query": None if query_vector is None else serialize_query(names, query_vector),
         "trees": trees,
     }
+    if task_type == "classification":
+        payload["classes"] = model.classes_.tolist()
+        payload["vote_distribution"] = (
+            None if query_vector is None
+            else _serialize_vote_distribution(model, tree_predictions)
+        )
+        payload["prediction_distribution"] = None
+    else:
+        payload["vote_distribution"] = None
+        payload["prediction_distribution"] = (
+            None if query_vector is None
+            else _serialize_prediction_distribution(model, query_vector, tree_predictions)
+        )
+        payload["prediction"] = (
+            None if query_vector is None
+            else {"value": payload["prediction_distribution"]["mean"]}
+        )
+    return payload

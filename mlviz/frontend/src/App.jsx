@@ -1,7 +1,16 @@
 import { useState, useEffect } from "react";
 import DecisionTreeView from "./views/DecisionTreeView";
+import KnnView from "./views/KnnView";
 import RandomForestView from "./views/RandomForestView";
+import SvmView from "./views/SvmView";
 import { getTheme, FONT_UI } from "./theme";
+
+const MODEL_LABELS = {
+  decision_tree: "decision tree",
+  random_forest: "random forest",
+  knn: "k-nearest neighbors",
+  svm: "support vector machine",
+};
 
 function initDark() {
   try {
@@ -44,12 +53,7 @@ export default function App() {
   useEffect(() => {
     if (!data) return;
 
-    const modelLabel =
-      data.model_type === "decision_tree"
-        ? "decision tree"
-        : data.model_type === "random_forest"
-          ? "random forest"
-          : String(data.model_type ?? "model");
+    const modelLabel = MODEL_LABELS[data.model_type] ?? String(data.model_type ?? "model");
 
     if (data.dataset_name) {
       document.title = `mlviz · ${data.dataset_name} · ${modelLabel}`;
@@ -96,6 +100,12 @@ export default function App() {
 
   if (data.model_type === "random_forest")
     return <RandomForestView data={data} dark={dark} toggleDark={toggleDark} />;
+
+  if (data.model_type === "knn")
+    return <KnnView data={data} dark={dark} toggleDark={toggleDark} />;
+
+  if (data.model_type === "svm")
+    return <SvmView data={data} dark={dark} toggleDark={toggleDark} />;
 
   return (
     <div style={{ ...centreStyle, color: T.red }}>

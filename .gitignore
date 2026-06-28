@@ -1,5 +1,6 @@
 # ── Claude / AI tooling ──────────────────────────────────────────────────────
 CLAUDE.md
+.claude/
 docs/
 docs/superpowers
 docs/superpowers/specs

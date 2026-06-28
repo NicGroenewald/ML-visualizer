@@ -1,6 +1,7 @@
 ---
-tags: [mlviz, python, v1, theory, decision-tree]
-status: complete
+tags: [mlviz, theory, decision-tree]
+status: current
+version: v0.2.3
 ---
 
 # Decision Tree — Theory & sklearn Internals
@@ -89,6 +90,14 @@ tree.value[i]          # class counts, shape [1, n_classes]
 
 Deeper tree → more splits → memorises training data → overfits. `max_depth` is the main lever. The mlviz visualiser makes this visible — you can see how the tree gets busier with depth.
 
+## Regression Trees
+
+`DecisionTreeRegressor` uses the same flat-array structure. The key difference:
+- Leaf nodes store a **mean target value** in `tree.value[i]` (still shape `[1, 1]` for single-output) instead of class counts.
+- `tree.impurity[i]` at leaves stores MSE (mean squared error) rather than Gini impurity.
+- `model.feature_importances_` works identically — based on reduction in MSE rather than Gini.
+
 ## Related Notes
 
-- [[Extractor - DT]] — how the extractor reads these arrays and serialises to JSON
+- [[Extractor - Shared]] — how the extractor reads these arrays and serialises to JSON
+- [[Extractor - DT]] — the thin wrapper that calls shared helpers

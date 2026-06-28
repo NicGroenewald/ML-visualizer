@@ -8,9 +8,11 @@ export default function ForestTreeBrowser({
   setSelectedTreeId,
   classes,
   dark,
+  taskType = "classification",
 }) {
   const T = getTheme(dark);
   const classColors = getClassColors(dark);
+  const isRegression = taskType === "regression";
 
   return (
     <div style={{
@@ -54,7 +56,17 @@ export default function ForestTreeBrowser({
             <span style={{ fontSize: 10, color: T.textTertiary, fontFamily: FONT_MONO }}>
               d{tree.max_depth} · {tree.n_leaves} leaves
             </span>
-            {vote && (
+            {vote && isRegression && (
+              <span style={{
+                fontSize: 10,
+                color: T.accent,
+                fontWeight: 500,
+                fontFamily: FONT_MONO,
+              }}>
+                {Number(vote.value).toFixed(3)}
+              </span>
+            )}
+            {vote && !isRegression && (
               <span style={{
                 fontSize: 10, display: "flex", alignItems: "center", gap: 4,
                 color: classColors[vote.class_index] ?? T.textSecondary,

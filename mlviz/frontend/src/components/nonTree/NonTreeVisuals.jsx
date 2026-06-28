@@ -102,7 +102,7 @@ function TooltipBox({ item, T }) {
   );
 }
 
-function ChartFrame({ children, hover, setHover, dark }) {
+function ChartFrame({ children, hover, setHover, dark, style = null }) {
   const T = getTheme(dark);
   const reduceMotion = useReducedMotion();
   const ref = useRef(null);
@@ -110,7 +110,7 @@ function ChartFrame({ children, hover, setHover, dark }) {
   return (
     <div
       ref={ref}
-      style={{ position: "relative", overflowX: "auto" }}
+      style={{ position: "relative", overflowX: "auto", ...style }}
       onMouseMove={(e) => {
         if (!hover || !ref.current) return;
         const rect = ref.current.getBoundingClientRect();
@@ -229,6 +229,432 @@ export function KnnRegressionTargetStrip({ data, dark }) {
   );
 }
 
+function localPlotScale(points, width, height) {
+  const maxAbs = Math.max(
+    1,
+    ...points.flatMap((p) => [Math.abs(p.wx), Math.abs(p.wy)])
+  );
+  const pad = 54;
+  const usable = Math.min(width, height) - pad * 2;
+  const k = usable / (maxAbs * 2);
+  return (point) => ({
+    sx: width / 2 + point.wx * k,
+    sy: height / 2 - point.wy * k,
+  });
+}
+
+function neighborRows(neighborProjection) {
+  const neighbors = neighborProjection?.points?.filter((point) => point.point_type === "neighbor") ?? [];
+  const totalWeight = neighbors.reduce((sum, point) => sum + Number(point.effective_weight ?? 0), 0);
+  const denominator = totalWeight > 0 ? totalWeight : Math.max(neighbors.length, 1);
+  return neighbors.map((point) => {
+    const rawWeight = totalWeight > 0 ? Number(point.effective_weight ?? 0) : 1;
+    const normalizedWeight = rawWeight / denominator;
+    return {
+      ...point,
+      normalizedWeight,
+      contribution: normalizedWeight * Number(point.target_value ?? 0),
+    };
+  });
+}
+
+function contextRows(neighborProjection) {
+  return neighborProjection?.points?.filter((point) => point.point_type === "context") ?? [];
+}
+
+function targetColor(T, targetRange, value) {
+  const [mn, mx] = targetRange ?? [0, 1];
+  const t = mx > mn ? (Number(value) - mn) / (mx - mn) : 0.5;
+  return mixHex(T.green, T.accent, Math.max(0, Math.min(1, t)));
+}
+
+function pointHoverLines(point, isNeighbor) {
+  if (point.point_type === "query") {
+    return [
+      { label: "role", value: "query" },
+      { label: "prediction", value: fmt(point.prediction_value) },
+    ];
+  }
+  if (isNeighbor) {
+    return [
+      { label: "rank", value: point.rank },
+      { label: "row", value: point.training_index },
+      { label: "target", value: fmt(point.target_value) },
+      { label: "distance", value: fmt(point.distance) },
+      { label: "weight", value: fmt(point.effective_weight) },
+    ];
+  }
+  return [
+    { label: "row", value: point.training_index },
+    { label: "target", value: fmt(point.target_value) },
+    { label: "role", value: "context" },
+  ];
+}
+
+function KnnLocalNeighborPlot({ neighborProjection, dark, activeTrainingIndex, setActiveTrainingIndex }) {
+  const T = getTheme(dark);
+  const reduceMotion = useReducedMotion();
+  const containerRef = useRef(null);
+  const { transform, setTransform, dragRef, onMouseDown, onMouseUp } = useCanvasInteraction(containerRef);
+  const { zoom, ox, oy } = transform;
+  const [hover, setHover] = useState(null);
+  const width = 640;
+  const height = 360;
+  const points = neighborProjection?.points ?? [];
+  const query = points.find((point) => point.point_type === "query");
+  const neighbors = neighborRows(neighborProjection);
+  const context = contextRows(neighborProjection);
+  const pointFor = localPlotScale(points, width, height);
+  const maxWeight = Math.max(1e-9, ...neighbors.map((point) => point.normalizedWeight));
+  const targetRange = extent([
+    ...neighbors.map((point) => point.target_value),
+    ...context.map((point) => point.target_value),
+    neighborProjection?.prediction_value,
+  ]);
+
+  if (!query || !neighbors.length) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: T.textTertiary, fontSize: 12 }}>
+        Local neighbor projection is unavailable for this query.
+      </div>
+    );
+  }
+
+  const queryScreen = pointFor(query);
+  const queryHoverPoint = { ...query, prediction_value: neighborProjection?.prediction_value };
+  const graphTransform = `translate(${width / 2 + ox} ${height / 2 + oy}) scale(${zoom}) translate(${-width / 2} ${-height / 2})`;
+  const screenPointFor = (point) => {
+    const base = pointFor(point);
+    return {
+      sx: width / 2 + ox + zoom * (base.sx - width / 2),
+      sy: height / 2 + oy + zoom * (base.sy - height / 2),
+    };
+  };
+  const updateNearestHover = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const mx = ((event.clientX - rect.left) / rect.width) * width;
+    const my = ((event.clientY - rect.top) / rect.height) * height;
+    let nearest = null;
+    for (const point of [queryHoverPoint, ...neighbors, ...context]) {
+      const p = screenPointFor(point);
+      const dist = Math.hypot(mx - p.sx, my - p.sy);
+      const threshold = point.point_type === "neighbor" ? 15 : point.point_type === "query" ? 16 : 9;
+      if (dist <= threshold && (!nearest || dist < nearest.dist)) {
+        nearest = { point, dist };
+      }
+    }
+    if (!nearest) {
+      setHover(null);
+      return;
+    }
+    if (nearest.point.point_type === "neighbor") {
+      setActiveTrainingIndex(nearest.point.training_index);
+    }
+    setHover({
+      sx: event.clientX - rect.left,
+      sy: event.clientY - rect.top,
+      item: { lines: pointHoverLines(nearest.point, nearest.point.point_type === "neighbor") },
+    });
+  };
+  const movePointer = (event) => {
+    if (dragRef.current) {
+      const { startX, startY, startOx, startOy, startZoom } = dragRef.current;
+      setTransform((prev) => ({
+        ...prev,
+        ox: startOx + (event.clientX - startX) / startZoom,
+        oy: startOy + (event.clientY - startY) / startZoom,
+      }));
+      return;
+    }
+    if (!hover) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHover((current) => current ? {
+      ...current,
+      sx: event.clientX - rect.left,
+      sy: event.clientY - rect.top,
+    } : null);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}
+      onMouseMove={movePointer}
+      onMouseDown={onMouseDown}
+      onMouseUp={onMouseUp}
+      onMouseLeave={() => { dragRef.current = null; setHover(null); }}
+      onDoubleClick={() => { setTransform({ zoom: 1, ox: 0, oy: 0 }); }}
+    >
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Query-local KNN neighbor projection"
+        onMouseMove={updateNearestHover}
+        style={{ cursor: dragRef.current ? "grabbing" : "grab" }}
+      >
+        <rect x="0" y="0" width={width} height={height} fill={T.canvas} />
+        <g transform={graphTransform}>
+          {[70, 125, 180].map((radius) => (
+            <circle
+              key={radius}
+              cx={queryScreen.sx}
+              cy={queryScreen.sy}
+              r={radius}
+              fill="none"
+              stroke={T.separator}
+              strokeWidth={1 / zoom}
+            />
+          ))}
+          {context.map((point) => {
+            const p = pointFor(point);
+            return (
+              <circle
+                key={`context-${point.training_index}`}
+                cx={p.sx}
+                cy={p.sy}
+                r={3.2 / Math.sqrt(zoom)}
+                fill={targetColor(T, targetRange, point.target_value)}
+                opacity="0.34"
+                stroke={T.surface}
+                strokeWidth={0.75 / zoom}
+                pointerEvents="none"
+                data-point-type="context"
+                data-training-index={point.training_index}
+              />
+            );
+          })}
+          {neighbors.map((point) => {
+            const p = pointFor(point);
+            return (
+              <line
+                key={`link-${point.training_index}`}
+                x1={queryScreen.sx}
+                y1={queryScreen.sy}
+                x2={p.sx}
+                y2={p.sy}
+                stroke={T.accent}
+                strokeWidth={0.9 / zoom}
+                strokeOpacity={0.22 + (point.normalizedWeight / maxWeight) * 0.22}
+                strokeLinecap="round"
+              />
+            );
+          })}
+          {neighbors.map((point) => {
+            const p = pointFor(point);
+            const isActive = activeTrainingIndex === point.training_index;
+            return (
+              <g key={`point-${point.training_index}`}>
+                <circle
+                  cx={p.sx}
+                  cy={p.sy}
+                  r={3.2 / Math.sqrt(zoom)}
+                  fill={targetColor(T, targetRange, point.target_value)}
+                  stroke={isActive ? T.accent : T.surface}
+                  strokeWidth={(isActive ? 1.1 : 0.75) / zoom}
+                  pointerEvents="none"
+                  data-point-type="neighbor"
+                  data-training-index={point.training_index}
+                  style={{ cursor: "pointer", transition: "stroke 160ms ease-out" }}
+                  onFocus={() => setActiveTrainingIndex(point.training_index)}
+                  tabIndex="0"
+                />
+              </g>
+            );
+          })}
+          <g
+            pointerEvents="none"
+            data-point-type="query"
+            style={{ cursor: "crosshair" }}
+          >
+            <circle cx={queryScreen.sx} cy={queryScreen.sy} r={3.2 / Math.sqrt(zoom)} fill="#F5A524" stroke={T.surface} strokeWidth={1 / zoom} />
+            <path
+              d={`M ${queryScreen.sx - 3} ${queryScreen.sy - 3} L ${queryScreen.sx + 3} ${queryScreen.sy + 3} M ${queryScreen.sx + 3} ${queryScreen.sy - 3} L ${queryScreen.sx - 3} ${queryScreen.sy + 3}`}
+              stroke={T.surface}
+              strokeWidth={1 / zoom}
+              strokeLinecap="round"
+            />
+          </g>
+        </g>
+      </svg>
+      <div style={{ position: "absolute", right: 10, bottom: 10, display: "flex", alignItems: "center", gap: 6, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 7, padding: 4 }}>
+        {[
+          ["−", () => setTransform((value) => { const nz = Math.max(0.55, value.zoom / 1.1); const r = nz / value.zoom; return { zoom: nz, ox: value.ox * r, oy: value.oy * r }; })],
+          [`${Math.round(zoom * 100)}%`, null],
+          ["+", () => setTransform((value) => { const nz = Math.min(5, value.zoom * 1.1); const r = nz / value.zoom; return { zoom: nz, ox: value.ox * r, oy: value.oy * r }; })],
+          ["fit", () => { setTransform({ zoom: 1, ox: 0, oy: 0 }); }],
+        ].map(([label, action]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={action ?? undefined}
+            disabled={!action}
+            style={{
+              minWidth: label === "fit" ? 28 : 24,
+              height: 22,
+              border: "none",
+              borderLeft: label === "+" || label === "fit" ? `1px solid ${T.separator}` : "none",
+              background: "transparent",
+              color: action ? T.textSecondary : T.text,
+              cursor: action ? "pointer" : "default",
+              fontSize: 11,
+              fontFamily: FONT_MONO,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div style={{ position: "absolute", bottom: 10, left: 12, color: T.textTertiary, fontSize: 10, pointerEvents: "none" }}>
+        all training rows are projected with the same true-distance MDS map · ctrl+scroll to zoom · drag to pan
+      </div>
+      <CanvasTooltip hover={hover} T={T} reduceMotion={reduceMotion} />
+    </div>
+  );
+}
+
+export function KnnWeightedAveragePanel({ data, dark, activeTrainingIndex, setActiveTrainingIndex, showHeading = true }) {
+  const T = getTheme(dark);
+  const neighborProjection = data.neighbor_projection;
+  const rows = neighborRows(neighborProjection);
+  const prediction = neighborProjection?.prediction_value ?? data.prediction?.value;
+
+  if (!rows.length || prediction == null) {
+    return (
+      <div style={{ color: T.textTertiary, fontSize: 12, lineHeight: 1.5 }}>
+        Supply a query sample to see the neighbor-average explanation.
+      </div>
+    );
+  }
+
+  const contributionTotal = rows.reduce((sum, row) => sum + row.contribution, 0);
+  const active = rows.find((row) => row.training_index === activeTrainingIndex) ?? rows[0];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
+      <div>
+        {showHeading ? (
+          <div style={{ fontSize: 10, color: T.textTertiary, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 8 }}>
+            weighted average
+          </div>
+        ) : null}
+        <div style={{ fontSize: 28, lineHeight: 1, color: T.accent, fontWeight: 650, fontFamily: FONT_MONO }}>
+          {fmt(prediction)}
+        </div>
+        <div style={{ marginTop: 6, color: T.textTertiary, fontSize: 12, lineHeight: 1.45 }}>
+          Prediction from the selected neighbors in original feature space.
+        </div>
+      </div>
+
+      {active && (
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, padding: 10, background: T.bg }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", marginBottom: 9 }}>
+            <div style={{ color: T.text, fontSize: 12, fontWeight: 650 }}>
+              selected #{active.rank} · row {active.training_index}
+            </div>
+            <div style={{ color: T.accent, fontSize: 11, fontFamily: FONT_MONO }}>
+              {fmt(active.normalizedWeight * 100)}%
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[
+              ["target", active.target_value],
+              ["distance", active.distance],
+              ["raw weight", active.effective_weight],
+              ["contribution", active.contribution],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <div style={{ color: T.text, fontSize: 13, fontFamily: FONT_MONO }}>{fmt(value)}</div>
+                <div style={{ color: T.textTertiary, fontSize: 10 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 0, overflowY: "auto" }}>
+        {rows.map((row) => (
+          <button
+            key={row.training_index}
+            type="button"
+            onMouseEnter={() => setActiveTrainingIndex(row.training_index)}
+            onFocus={() => setActiveTrainingIndex(row.training_index)}
+            onClick={() => setActiveTrainingIndex(row.training_index)}
+            style={{
+              border: "none",
+              borderTop: `1px solid ${T.separator}`,
+              padding: "8px 0 0",
+              background: "transparent",
+              textAlign: "left",
+              cursor: "pointer",
+              fontFamily: FONT_UI,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+              <span style={{ color: activeTrainingIndex === row.training_index ? T.accent : T.text, fontSize: 12, fontWeight: 600 }}>#{row.rank} row {row.training_index}</span>
+              <span style={{ color: T.textSecondary, fontSize: 11, fontFamily: FONT_MONO }}>{fmt(row.normalizedWeight * 100)}%</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 6 }}>
+              <div>
+                <div style={{ color: T.text, fontSize: 12, fontFamily: FONT_MONO }}>{fmt(row.target_value)}</div>
+                <div style={{ color: T.textTertiary, fontSize: 10 }}>target</div>
+              </div>
+              <div>
+                <div style={{ color: T.text, fontSize: 12, fontFamily: FONT_MONO }}>{fmt(row.distance)}</div>
+                <div style={{ color: T.textTertiary, fontSize: 10 }}>distance</div>
+              </div>
+              <div>
+                <div style={{ color: T.text, fontSize: 12, fontFamily: FONT_MONO }}>{fmt(row.contribution)}</div>
+                <div style={{ color: T.textTertiary, fontSize: 10 }}>part</div>
+              </div>
+            </div>
+            <svg width="100%" height="8" viewBox="0 0 100 8" preserveAspectRatio="none" style={{ marginTop: 6, display: "block" }}>
+              <rect x="0" y="2" width="100" height="4" rx="2" fill={T.surfaceSecondary} />
+              <rect x="0" y="2" width={Math.max(1, row.normalizedWeight * 100)} height="4" rx="2" fill={T.accent} />
+            </svg>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ borderTop: `1px solid ${T.separator}`, paddingTop: 10, color: T.textTertiary, fontSize: 11, fontFamily: FONT_MONO }}>
+        sum {fmt(contributionTotal)}
+      </div>
+    </div>
+  );
+}
+
+export function KnnRegressionExplanation({ data, dark, activeTrainingIndex, setActiveTrainingIndex }) {
+  const T = getTheme(dark);
+
+  if (!data.neighbor_projection) {
+    return <KnnProjectionPlot data={data} dark={dark} />;
+  }
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", background: T.bg }}>
+      <section style={{
+        flex: 1,
+        minHeight: 320,
+        display: "flex",
+        minWidth: 0,
+      }}>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative", background: T.canvas, width: "100%", height: "100%" }}>
+          <div style={{ position: "absolute", top: 10, left: 12, zIndex: 2, fontSize: 10, color: T.textTertiary, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.7px", pointerEvents: "none" }}>
+            local KNN map · true feature-space distances
+          </div>
+          <KnnLocalNeighborPlot
+            neighborProjection={data.neighbor_projection}
+            dark={dark}
+            activeTrainingIndex={activeTrainingIndex}
+            setActiveTrainingIndex={setActiveTrainingIndex}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function SvmDecisionScoreChart({ data, dark }) {
   const T = getTheme(dark);
   const scores = data.prediction?.decision_scores ?? [];
@@ -305,54 +731,33 @@ export function SvmRegressionValueStrip({ data, dark }) {
 
 // ── Shared canvas helpers ─────────────────────────────────────────────────────
 
-function drawRegionTiles(ctx, regions, T, ws, zoom) {
-  for (const r of regions) {
+function drawSoftBoundaryGlow(ctx, regions, classColors, boundaryDist, ws, zoom) {
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i];
+    const d = boundaryDist[i];
+    const alpha = d <= 2 ? 0.22 - (d / 2) * 0.18 : 0.06;
     const { sx: cx, sy: cy } = ws(r.wx, r.wy);
     const pw = r.cell_w * WORLD_SCALE * zoom;
     const ph = r.cell_h * WORLD_SCALE * zoom;
-    ctx.fillStyle = T.classFill[r.class_index] ?? T.classFill[0];
+    const [rv, gv, bv] = hexToRgb(classColors[r.class_index] ?? classColors[0]);
+    ctx.fillStyle = `rgba(${rv}, ${gv}, ${bv}, ${alpha})`;
     ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph);
   }
 }
 
-function drawGridBoundaryCanvas(ctx, regions, field, ws) {
-  const G = GRID_SIZE;
-  ctx.beginPath();
-  for (let i = 0; i < regions.length; i++) {
-    const r = regions[i];
-    const col = i % G;
-    const row = Math.floor(i / G);
-    if (col < G - 1) {
-      const right = regions[i + 1];
-      if (right && right[field] !== r[field]) {
-        const midWx = (r.wx + right.wx) / 2;
-        const { sx, sy: sy1 } = ws(midWx, r.wy + r.cell_h / 2);
-        const { sy: sy2 } = ws(midWx, r.wy - r.cell_h / 2);
-        ctx.moveTo(sx, sy1);
-        ctx.lineTo(sx, sy2);
-      }
-    }
-    if (row < G - 1) {
-      const above = regions[i + G];
-      if (above && above[field] !== r[field]) {
-        const midWy = (r.wy + above.wy) / 2;
-        const { sx: sx1, sy } = ws(r.wx - r.cell_w / 2, midWy);
-        const { sx: sx2 } = ws(r.wx + r.cell_w / 2, midWy);
-        ctx.moveTo(sx1, sy);
-        ctx.lineTo(sx2, sy);
-      }
-    }
-  }
-  ctx.stroke();
-}
-
-function drawQueryX(ctx, wx, wy, T, ws) {
+function drawQueryX(ctx, wx, wy, ws) {
   const { sx, sy } = ws(wx, wy);
-  ctx.font = `bold 22px ${FONT_MONO}`;
-  ctx.fillStyle = T.accent;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("×", sx, sy);
+  const s = 8;
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = "#F5A524";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(sx - s, sy - s);
+  ctx.lineTo(sx + s, sy + s);
+  ctx.moveTo(sx + s, sy - s);
+  ctx.lineTo(sx - s, sy + s);
+  ctx.stroke();
+  ctx.lineCap = "butt";
 }
 
 function CanvasTooltip({ hover, T, reduceMotion }) {
@@ -368,8 +773,8 @@ function CanvasTooltip({ hover, T, reduceMotion }) {
           transition={transition}
           style={{
             position: "absolute",
-            left: hover.sx + 12,
-            top: Math.max(8, hover.sy - 60),
+            left: (hover.sx ?? hover.x ?? 0) + 12,
+            top: Math.max(8, (hover.sy ?? hover.y ?? 60) - 60),
             zIndex: 20,
             pointerEvents: "none",
             transformOrigin: "top left",
@@ -382,37 +787,40 @@ function CanvasTooltip({ hover, T, reduceMotion }) {
   );
 }
 
-function useCanvasInteraction(canvasRef, exploreMode) {
+function useCanvasInteraction(canvasRef) {
   const [transform, setTransform] = useState({ zoom: 1, ox: 0, oy: 0 });
   const transformRef = useRef(transform);
   const dragRef = useRef(null);
 
   useEffect(() => { transformRef.current = transform; }, [transform]);
 
-  // Register non-passive wheel listener only when explore mode is active.
-  // When inactive, no listener is registered so the page scrolls normally.
+  // Zoom on ctrl+scroll or trackpad pinch (browsers fire ctrlKey=true for pinch).
+  // Plain scroll returns early without preventDefault so the page scrolls freely.
   useEffect(() => {
     const el = canvasRef.current;
-    if (!el || !exploreMode) return;
+    if (!el) return;
     const onWheel = (e) => {
+      if (!e.ctrlKey) return;
       e.preventDefault();
       const { zoom, ox, oy } = transformRef.current;
-      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const factor = e.deltaY < 0 ? 1.02 : 1 / 1.02;
       const newZoom = Math.max(0.2, Math.min(6, zoom * factor));
       const rect = el.getBoundingClientRect();
-      const k = 1 / newZoom - 1 / zoom;
+      const zoomRatio = newZoom / zoom;
+      const anchorX = e.clientX - rect.left - rect.width / 2;
+      const anchorY = e.clientY - rect.top - rect.height / 2;
       setTransform({
         zoom: newZoom,
-        ox: ox + (e.clientX - rect.left - el.clientWidth / 2) * k,
-        oy: oy + (e.clientY - rect.top - el.clientHeight / 2) * k,
+        ox: ox * zoomRatio + anchorX * (1 - zoomRatio),
+        oy: oy * zoomRatio + anchorY * (1 - zoomRatio),
       });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [canvasRef, exploreMode]);
+  }, [canvasRef]);
 
   const onMouseDown = (e) => {
-    if (!exploreMode || e.button !== 0) return;
+    if (e.button !== 0) return;
     const { ox, oy, zoom } = transformRef.current;
     dragRef.current = { startX: e.clientX, startY: e.clientY, startOx: ox, startOy: oy, startZoom: zoom };
   };
@@ -430,29 +838,13 @@ export function KnnProjectionPlot({ data, dark }) {
   const canvasRef = useRef(null);
   const canvasSize = useCanvasSetup(canvasRef);
   const reduceMotion = useReducedMotion();
-  const [exploreMode, setExploreMode] = useState(false);
-  const { transform, setTransform, dragRef, onMouseDown, onMouseUp } = useCanvasInteraction(canvasRef, exploreMode);
+  const { transform, setTransform, dragRef, onMouseDown, onMouseUp } = useCanvasInteraction(canvasRef);
   const { zoom, ox, oy } = transform;
   const [hover, setHover] = useState(null);
+  const [showBoundaries, setShowBoundaries] = useState(false);
 
   const projection = data.projection;
   const taskType = data.task_type ?? "classification";
-
-  // Clear drag + hover when leaving explore mode
-  useEffect(() => {
-    if (!exploreMode) {
-      dragRef.current = null;
-      setHover(null);
-    }
-  }, [exploreMode, dragRef]);
-
-  // Escape key exits explore mode
-  useEffect(() => {
-    if (!exploreMode) return;
-    const fn = (e) => { if (e.key === "Escape") setExploreMode(false); };
-    window.addEventListener("keydown", fn);
-    return () => window.removeEventListener("keydown", fn);
-  }, [exploreMode]);
 
   // Auto-fit once on first valid canvas size
   const hasFitted = useRef(false);
@@ -486,6 +878,49 @@ export function KnnProjectionPlot({ data, dark }) {
     return extent(projection.points.map((p) => p.label_or_target));
   }, [taskType, projection]);
 
+  const boundaryDist = useMemo(() => {
+    const regions = projection?.regions;
+    if (!regions || taskType !== "classification") return null;
+    const G = GRID_SIZE;
+    const dist = new Uint8Array(G * G).fill(255);
+    const bnd = [];
+    for (let i = 0; i < regions.length; i++) {
+      const row = Math.floor(i / G), col = i % G;
+      let isBnd = false;
+      outer: for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (!dr && !dc) continue;
+          const nr = row + dr, nc = col + dc;
+          if (nr < 0 || nr >= G || nc < 0 || nc >= G) continue;
+          if (regions[nr * G + nc].class_index !== regions[i].class_index) { isBnd = true; break outer; }
+        }
+      }
+      if (isBnd) { dist[i] = 0; bnd.push(i); }
+    }
+    for (const i of bnd) {
+      const row = Math.floor(i / G), col = i % G;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const nr = row + dr, nc = col + dc;
+        if (nr < 0 || nr >= G || nc < 0 || nc >= G) continue;
+        const ni = nr * G + nc;
+        if (dist[ni] > 1) dist[ni] = 1;
+      }
+    }
+    for (let i = 0; i < G * G; i++) {
+      if (dist[i] !== 1) continue;
+      const row = Math.floor(i / G), col = i % G;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const nr = row + dr, nc = col + dc;
+        if (nr < 0 || nr >= G || nc < 0 || nc >= G) continue;
+        const ni = nr * G + nc;
+        if (dist[ni] > 2) dist[ni] = 2;
+      }
+    }
+    return dist;
+  }, [projection, taskType]);
+
   useEffect(() => {
     if (!canvasSize.w || !canvasSize.h || !projection) return;
     const canvas = canvasRef.current;
@@ -497,20 +932,16 @@ export function KnnProjectionPlot({ data, dark }) {
     const ws = (wx, wy) => worldToScreen(wx, wy, zoom, ox, oy, canvasSize.w, canvasSize.h);
     const ptWy = (p) => (taskType === "regression" && toWorldY ? toWorldY(p.label_or_target) : p.wy);
 
-    if (taskType === "classification" && projection.regions) {
-      drawRegionTiles(ctx, projection.regions, T, ws, zoom);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = T.text;
-      ctx.globalAlpha = 0.28;
-      drawGridBoundaryCanvas(ctx, projection.regions, "class_index", ws);
-      ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
+    if (showBoundaries && taskType === "classification" && projection.regions && boundaryDist) {
+      drawSoftBoundaryGlow(ctx, projection.regions, classColors, boundaryDist, ws, zoom);
     }
 
     if (projection.query_point && projection.neighbor_indices?.length) {
       const { sx: qsx, sy: qsy } = ws(projection.query_point.wx, projection.query_point.wy);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = T.accent;
-      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.globalAlpha = 0.2;
       ctx.beginPath();
       for (const idx of projection.neighbor_indices) {
         const pt = projection.points[idx];
@@ -520,13 +951,13 @@ export function KnnProjectionPlot({ data, dark }) {
         ctx.lineTo(sx, sy);
       }
       ctx.stroke();
-      ctx.globalAlpha = 1;
     }
 
+    // Non-neighbors at 0.6 opacity
+    ctx.globalAlpha = 0.6;
     for (const pt of projection.points) {
-      const isNeighbor = neighborSet.has(pt.training_index);
+      if (neighborSet.has(pt.training_index)) continue;
       const { sx, sy } = ws(pt.wx, ptWy(pt));
-      const r = isNeighbor ? 5 : 3.5;
       let fill;
       if (taskType === "classification") {
         fill = classColors[pt.class_index] ?? T.textSecondary;
@@ -536,11 +967,33 @@ export function KnnProjectionPlot({ data, dark }) {
         fill = mixHex(T.green, T.accent, Math.max(0, Math.min(1, t)));
       }
       ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
       ctx.fillStyle = fill;
       ctx.fill();
-      ctx.lineWidth = isNeighbor ? 1.75 : 1;
-      ctx.strokeStyle = isNeighbor ? T.accent : T.surface;
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = T.surface;
+      ctx.stroke();
+    }
+
+    // Neighbors at full opacity with white ring
+    ctx.globalAlpha = 1;
+    for (const pt of projection.points) {
+      if (!neighborSet.has(pt.training_index)) continue;
+      const { sx, sy } = ws(pt.wx, ptWy(pt));
+      let fill;
+      if (taskType === "classification") {
+        fill = classColors[pt.class_index] ?? T.textSecondary;
+      } else {
+        const [mn, mx] = targetRange ?? [0, 1];
+        const t = mx > mn ? (pt.label_or_target - mn) / (mx - mn) : 0.5;
+        fill = mixHex(T.green, T.accent, Math.max(0, Math.min(1, t)));
+      }
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#FFFFFF";
       ctx.stroke();
     }
 
@@ -548,12 +1001,12 @@ export function KnnProjectionPlot({ data, dark }) {
       const qWy = taskType === "regression" && toWorldY && data.prediction?.value != null
         ? toWorldY(data.prediction.value)
         : projection.query_point.wy;
-      drawQueryX(ctx, projection.query_point.wx, qWy, T, ws);
+      drawQueryX(ctx, projection.query_point.wx, qWy, ws);
     }
-  }, [canvasSize, transform, dark, data]);
+  }, [canvasSize, transform, dark, data, showBoundaries, boundaryDist]);
 
   const onMouseMove = (e) => {
-    if (!projection || !exploreMode) return;
+    if (!projection) return;
     if (dragRef.current) {
       const { startX, startY, startOx, startOy, startZoom } = dragRef.current;
       setTransform((prev) => ({
@@ -599,48 +1052,48 @@ export function KnnProjectionPlot({ data, dark }) {
       onMouseUp={onMouseUp}
       onMouseLeave={() => { dragRef.current = null; setHover(null); }}
       onDoubleClick={() => {
-        if (!exploreMode || !projection?.points?.length || !canvasSize.w) return;
+        if (!projection?.points?.length || !canvasSize.w) return;
         setTransform(computeAutoFit(projection.points, canvasSize.w, canvasSize.h));
       }}
     >
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block", cursor: exploreMode ? "crosshair" : "default" }}
+        style={{ width: "100%", height: "100%", display: "block", cursor: "crosshair" }}
       />
       <div style={{ position: "absolute", top: 8, left: 10, fontSize: 10, color: T.textTertiary, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.7px", pointerEvents: "none" }}>
-        KNN decision map · PCA projection
+        {taskType === "regression" ? "KNN regression overview · PCA projection" : "KNN decision map · PCA projection"}
       </div>
-      <button
-        onClick={() => setExploreMode((v) => !v)}
-        style={{
-          position: "absolute",
-          bottom: 10,
-          left: 10,
-          padding: "4px 10px",
-          background: exploreMode ? T.accent : T.surface,
-          border: `1px solid ${exploreMode ? T.accent : T.border}`,
-          borderRadius: 6,
-          fontSize: 10,
-          fontWeight: 500,
-          textTransform: "uppercase",
-          letterSpacing: "0.7px",
-          color: exploreMode ? "#fff" : T.textTertiary,
-          cursor: "pointer",
-          fontFamily: FONT_UI,
-          transition: "background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out",
-        }}
-      >
-        {exploreMode ? "exit" : "explore"}
-      </button>
-      {exploreMode ? (
-        <div style={{ position: "absolute", bottom: 10, right: 10, fontSize: 10, color: T.textTertiary, pointerEvents: "none" }}>
-          scroll to zoom · drag to pan · double-click to reset · esc to exit
-        </div>
-      ) : (
-        <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", fontSize: 10, color: T.textTertiary, pointerEvents: "none", whiteSpace: "nowrap" }}>
-          click explore to interact
+      {taskType === "classification" && (
+        <button
+          onClick={() => setShowBoundaries((v) => !v)}
+          style={{
+            position: "absolute", top: 30, left: 8,
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "3px 8px", borderRadius: 99,
+            border: `1px solid ${showBoundaries ? T.accent : T.border}`,
+            background: showBoundaries ? T.accentFill : "transparent",
+            color: showBoundaries ? T.accent : T.textTertiary,
+            fontSize: 10, fontWeight: 500, fontFamily: FONT_UI,
+            cursor: "pointer", letterSpacing: "0.5px",
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="0.75" y="0.75" width="3.5" height="3.5" rx="0.5" />
+            <rect x="5.75" y="0.75" width="3.5" height="3.5" rx="0.5" />
+            <rect x="0.75" y="5.75" width="3.5" height="3.5" rx="0.5" />
+            <rect x="5.75" y="5.75" width="3.5" height="3.5" rx="0.5" />
+          </svg>
+          boundaries
+        </button>
+      )}
+      {taskType === "regression" && (
+        <div style={{ position: "absolute", bottom: 10, left: 8, fontSize: 10, color: T.textTertiary, pointerEvents: "none" }}>
+          positions are PCA projections — neighbour distances are computed in the original feature space
         </div>
       )}
+      <div style={{ position: "absolute", bottom: 10, right: 10, fontSize: 10, color: T.textTertiary, pointerEvents: "none" }}>
+        ctrl+scroll to zoom · drag to pan · double-click to reset
+      </div>
       <CanvasTooltip hover={hover} T={T} reduceMotion={reduceMotion} />
     </div>
   );
@@ -654,27 +1107,13 @@ export function SvmProjectionPlot({ data, dark }) {
   const canvasRef = useRef(null);
   const canvasSize = useCanvasSetup(canvasRef);
   const reduceMotion = useReducedMotion();
-  const [exploreMode, setExploreMode] = useState(false);
-  const { transform, setTransform, dragRef, onMouseDown, onMouseUp } = useCanvasInteraction(canvasRef, exploreMode);
+  const { transform, setTransform, dragRef, onMouseDown, onMouseUp } = useCanvasInteraction(canvasRef);
   const { zoom, ox, oy } = transform;
   const [hover, setHover] = useState(null);
+  const [showBoundaries, setShowBoundaries] = useState(false);
 
   const projection = data.projection;
   const taskType = data.task_type ?? "classification";
-
-  useEffect(() => {
-    if (!exploreMode) {
-      dragRef.current = null;
-      setHover(null);
-    }
-  }, [exploreMode, dragRef]);
-
-  useEffect(() => {
-    if (!exploreMode) return;
-    const fn = (e) => { if (e.key === "Escape") setExploreMode(false); };
-    window.addEventListener("keydown", fn);
-    return () => window.removeEventListener("keydown", fn);
-  }, [exploreMode]);
 
   const hasFitted = useRef(false);
   useEffect(() => {
@@ -700,6 +1139,49 @@ export function SvmProjectionPlot({ data, dark }) {
     return extent(projection.points.map((p) => p.label_or_target));
   }, [taskType, projection]);
 
+  const boundaryDist = useMemo(() => {
+    const regions = projection?.regions;
+    if (!regions || taskType !== "classification") return null;
+    const G = GRID_SIZE;
+    const dist = new Uint8Array(G * G).fill(255);
+    const bnd = [];
+    for (let i = 0; i < regions.length; i++) {
+      const row = Math.floor(i / G), col = i % G;
+      let isBnd = false;
+      outer: for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (!dr && !dc) continue;
+          const nr = row + dr, nc = col + dc;
+          if (nr < 0 || nr >= G || nc < 0 || nc >= G) continue;
+          if (regions[nr * G + nc].class_index !== regions[i].class_index) { isBnd = true; break outer; }
+        }
+      }
+      if (isBnd) { dist[i] = 0; bnd.push(i); }
+    }
+    for (const i of bnd) {
+      const row = Math.floor(i / G), col = i % G;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const nr = row + dr, nc = col + dc;
+        if (nr < 0 || nr >= G || nc < 0 || nc >= G) continue;
+        const ni = nr * G + nc;
+        if (dist[ni] > 1) dist[ni] = 1;
+      }
+    }
+    for (let i = 0; i < G * G; i++) {
+      if (dist[i] !== 1) continue;
+      const row = Math.floor(i / G), col = i % G;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const nr = row + dr, nc = col + dc;
+        if (nr < 0 || nr >= G || nc < 0 || nc >= G) continue;
+        const ni = nr * G + nc;
+        if (dist[ni] > 2) dist[ni] = 2;
+      }
+    }
+    return dist;
+  }, [projection, taskType]);
+
   // Draw
   useEffect(() => {
     if (!canvasSize.w || !canvasSize.h || !projection) return;
@@ -713,24 +1195,20 @@ export function SvmProjectionPlot({ data, dark }) {
     const toWY = toWorldY ? toWorldY.fn : null;
     const ptWy = (p) => (taskType === "regression" && toWY ? toWY(p.label_or_target) : p.wy);
 
+    ctx.globalAlpha = 1;
+
     if (taskType === "classification") {
-      // 1. Region tiles
-      if (projection.regions) {
-        drawRegionTiles(ctx, projection.regions, T, ws, zoom);
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = T.text;
-        ctx.globalAlpha = 0.28;
-        drawGridBoundaryCanvas(ctx, projection.regions, "class_index", ws);
-        ctx.globalAlpha = 1;
+      // Soft boundary glow
+      if (showBoundaries && projection.regions && boundaryDist) {
+        drawSoftBoundaryGlow(ctx, projection.regions, classColors, boundaryDist, ws, zoom);
       }
 
-      // 2. Margin boundary and dashed margin lines (binary SVC only)
+      // Margin boundary and dashed margin lines (binary SVC only)
       if (projection.margin_regions) {
-        // Boundary: where margin_sign changes (0 crossing)
+        const G = GRID_SIZE;
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = T.text;
         ctx.globalAlpha = 0.7;
-        const G = GRID_SIZE;
         ctx.beginPath();
         for (let i = 0; i < projection.margin_regions.length; i++) {
           const r = projection.margin_regions[i];
@@ -759,7 +1237,7 @@ export function SvmProjectionPlot({ data, dark }) {
         }
         ctx.stroke();
 
-        // Margin dashes: edges where margin_sign transitions between +1 and -1 (skipping 0)
+        // Margin dashes
         ctx.lineWidth = 1;
         ctx.strokeStyle = T.textSecondary;
         ctx.globalAlpha = 0.55;
@@ -827,12 +1305,11 @@ export function SvmProjectionPlot({ data, dark }) {
       ctx.stroke();
     }
 
-    // Training points
+    // Non-support-vector points at 0.6 opacity
+    ctx.globalAlpha = 0.6;
     for (const pt of projection.points) {
-      const isSV = pt.is_support_vector;
+      if (pt.is_support_vector) continue;
       const { sx, sy } = ws(pt.wx, ptWy(pt));
-      const r = isSV ? 5 : 3.5;
-
       let fill;
       if (taskType === "classification") {
         fill = classColors[pt.class_index] ?? T.textSecondary;
@@ -841,13 +1318,34 @@ export function SvmProjectionPlot({ data, dark }) {
         const t = mx > mn ? (pt.label_or_target - mn) / (mx - mn) : 0.5;
         fill = mixHex(T.green, T.accent, Math.max(0, Math.min(1, t)));
       }
-
       ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
       ctx.fillStyle = fill;
       ctx.fill();
-      ctx.lineWidth = isSV ? 1.75 : 1;
-      ctx.strokeStyle = isSV ? T.accent : T.surface;
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = T.surface;
+      ctx.stroke();
+    }
+
+    // Support vectors at full opacity with white ring
+    ctx.globalAlpha = 1;
+    for (const pt of projection.points) {
+      if (!pt.is_support_vector) continue;
+      const { sx, sy } = ws(pt.wx, ptWy(pt));
+      let fill;
+      if (taskType === "classification") {
+        fill = classColors[pt.class_index] ?? T.textSecondary;
+      } else {
+        const [mn, mx] = targetRange ?? [0, 1];
+        const t = mx > mn ? (pt.label_or_target - mn) / (mx - mn) : 0.5;
+        fill = mixHex(T.green, T.accent, Math.max(0, Math.min(1, t)));
+      }
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#FFFFFF";
       ctx.stroke();
     }
 
@@ -856,12 +1354,12 @@ export function SvmProjectionPlot({ data, dark }) {
       const qWy = taskType === "regression" && toWY && data.prediction?.value != null
         ? toWY(data.prediction.value)
         : projection.query_point.wy;
-      drawQueryX(ctx, projection.query_point.wx, qWy, T, ws);
+      drawQueryX(ctx, projection.query_point.wx, qWy, ws);
     }
-  }, [canvasSize, transform, dark, data]);
+  }, [canvasSize, transform, dark, data, showBoundaries, boundaryDist]);
 
   const onMouseMove = (e) => {
-    if (!projection || !exploreMode) return;
+    if (!projection) return;
     if (dragRef.current) {
       const { startX, startY, startOx, startOy, startZoom } = dragRef.current;
       setTransform((prev) => ({
@@ -911,48 +1409,41 @@ export function SvmProjectionPlot({ data, dark }) {
       onMouseUp={onMouseUp}
       onMouseLeave={() => { dragRef.current = null; setHover(null); }}
       onDoubleClick={() => {
-        if (!exploreMode || !projection?.points?.length || !canvasSize.w) return;
+        if (!projection?.points?.length || !canvasSize.w) return;
         setTransform(computeAutoFit(projection.points, canvasSize.w, canvasSize.h));
       }}
     >
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block", cursor: exploreMode ? "crosshair" : "default" }}
+        style={{ width: "100%", height: "100%", display: "block", cursor: "crosshair" }}
       />
       <div style={{ position: "absolute", top: 8, left: 10, fontSize: 10, color: T.textTertiary, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.7px", pointerEvents: "none" }}>
         {title}
       </div>
       <button
-        onClick={() => setExploreMode((v) => !v)}
+        onClick={() => setShowBoundaries((v) => !v)}
         style={{
-          position: "absolute",
-          bottom: 10,
-          left: 10,
-          padding: "4px 10px",
-          background: exploreMode ? T.accent : T.surface,
-          border: `1px solid ${exploreMode ? T.accent : T.border}`,
-          borderRadius: 6,
-          fontSize: 10,
-          fontWeight: 500,
-          textTransform: "uppercase",
-          letterSpacing: "0.7px",
-          color: exploreMode ? "#fff" : T.textTertiary,
-          cursor: "pointer",
-          fontFamily: FONT_UI,
-          transition: "background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out",
+          position: "absolute", top: 30, left: 8,
+          display: "flex", alignItems: "center", gap: 4,
+          padding: "3px 8px", borderRadius: 99,
+          border: `1px solid ${showBoundaries ? T.accent : T.border}`,
+          background: showBoundaries ? T.accentFill : "transparent",
+          color: showBoundaries ? T.accent : T.textTertiary,
+          fontSize: 10, fontWeight: 500, fontFamily: FONT_UI,
+          cursor: "pointer", letterSpacing: "0.5px",
         }}
       >
-        {exploreMode ? "exit" : "explore"}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <rect x="0.75" y="0.75" width="3.5" height="3.5" rx="0.5" />
+          <rect x="5.75" y="0.75" width="3.5" height="3.5" rx="0.5" />
+          <rect x="0.75" y="5.75" width="3.5" height="3.5" rx="0.5" />
+          <rect x="5.75" y="5.75" width="3.5" height="3.5" rx="0.5" />
+        </svg>
+        boundaries
       </button>
-      {exploreMode ? (
-        <div style={{ position: "absolute", bottom: 10, right: 10, fontSize: 10, color: T.textTertiary, pointerEvents: "none" }}>
-          scroll to zoom · drag to pan · double-click to reset · esc to exit
-        </div>
-      ) : (
-        <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", fontSize: 10, color: T.textTertiary, pointerEvents: "none", whiteSpace: "nowrap" }}>
-          click explore to interact
-        </div>
-      )}
+      <div style={{ position: "absolute", bottom: 10, right: 10, fontSize: 10, color: T.textTertiary, pointerEvents: "none" }}>
+        ctrl+scroll to zoom · drag to pan · double-click to reset
+      </div>
       <CanvasTooltip hover={hover} T={T} reduceMotion={reduceMotion} />
     </div>
   );

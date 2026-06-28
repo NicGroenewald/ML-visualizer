@@ -20,7 +20,7 @@
 
 - You see the **real model** — not a diagram generated from scratch, but the actual fitted tree structure
 - Pass a **query point** and mlviz traces the exact path that sample takes through the model
-- Supports **Decision Trees** and **Random Forests** today
+- Supports **Decision Trees**, **Random Forests**, **KNN**, and **SVM** for classification and regression today
 
 ---
 
@@ -42,17 +42,24 @@
 
 - Tree browser strip — scroll and click to inspect individual trees
 - Single-tree canvas with path highlighting
-- Ensemble vote distribution panel
+- Ensemble vote distribution or prediction spread panel
 - Feature importance sidebar
 - OOB score card (when `oob_score=True` was set on the model)
 
 Both views support a **light/dark theme toggle** with saved preference.
 
+### KNN and SVM
+
+- KNN summary view with nearest-neighbor distances, labels/targets, and effective weights for a query point
+- SVM summary view with support vectors, kernel parameters, and query prediction details
+- SVG query explanation charts and PCA projection plots for non-tree model behavior
+- Classification and regression modes use the same `task_type` convention as the tree views
+
 ---
 
 ## Quick start
 
-### Decision Tree
+### Decision Tree Classifier
 
 ```python
 from sklearn.datasets import load_iris
@@ -75,7 +82,30 @@ visualize(
 )
 ```
 
-### Random Forest
+### Decision Tree Regressor
+
+```python
+from sklearn.datasets import load_diabetes
+from sklearn.tree import DecisionTreeRegressor
+from mlviz import visualize
+
+diabetes = load_diabetes()
+X, y = diabetes.data, diabetes.target
+
+model = DecisionTreeRegressor(max_depth=3, random_state=0)
+model.fit(X, y)
+
+visualize(
+    model,
+    X,
+    y,
+    query=X[0],
+    feature_names=diabetes.feature_names,
+    dataset_name="diabetes",
+)
+```
+
+### Random Forest Classifier
 
 ```python
 from sklearn.datasets import load_breast_cancer
@@ -98,7 +128,76 @@ visualize(
 )
 ```
 
-Both examples are in `demo.ipynb` alongside a wine dataset example.
+### Random Forest Regressor
+
+```python
+from sklearn.datasets import load_diabetes
+from sklearn.ensemble import RandomForestRegressor
+from mlviz import visualize
+
+diabetes = load_diabetes()
+X, y = diabetes.data, diabetes.target
+
+model = RandomForestRegressor(n_estimators=100, random_state=0, oob_score=True)
+model.fit(X, y)
+
+visualize(
+    model,
+    X,
+    y,
+    query=X[0],
+    feature_names=diabetes.feature_names,
+    dataset_name="diabetes",
+)
+```
+
+### KNN Classifier
+
+```python
+from sklearn.datasets import load_iris
+from sklearn.neighbors import KNeighborsClassifier
+from mlviz import visualize
+
+iris = load_iris()
+X, y = iris.data, iris.target
+
+model = KNeighborsClassifier(n_neighbors=5, weights="distance")
+model.fit(X, y)
+
+visualize(
+    model,
+    X,
+    y,
+    query=X[0],
+    feature_names=iris.feature_names,
+    dataset_name="iris knn",
+)
+```
+
+### SVM Classifier
+
+```python
+from sklearn.datasets import load_iris
+from sklearn.svm import SVC
+from mlviz import visualize
+
+iris = load_iris()
+X, y = iris.data, iris.target
+
+model = SVC(kernel="rbf", probability=True, random_state=0)
+model.fit(X, y)
+
+visualize(
+    model,
+    X,
+    y,
+    query=X[0],
+    feature_names=iris.feature_names,
+    dataset_name="iris svm",
+)
+```
+
+The full set of standalone examples is in `demo.ipynb`.
 
 ---
 
@@ -117,7 +216,7 @@ visualize(
 
 | Parameter | Type | Description |
 |---|---|---|
-| `model` | fitted estimator | `DecisionTreeClassifier` or `RandomForestClassifier` |
+| `model` | fitted estimator | `DecisionTreeClassifier`, `DecisionTreeRegressor`, `RandomForestClassifier`, `RandomForestRegressor`, `KNeighborsClassifier`, `KNeighborsRegressor`, `SVC`, or `SVR` |
 | `X_train` | array-like | Training features used to fit the model |
 | `y_train` | array-like | Training labels used to fit the model |
 | `query` | array-like, optional | A single sample to trace through the model |
@@ -135,14 +234,14 @@ graph LR
     C --> D[Start local FastAPI server]
     D --> E[Open browser]
     E --> F[Frontend fetches /api/model]
-    F --> G[Load /api/tree or /api/forest]
+    F --> G[Load model-specific endpoint]
 ```
 
-1. `visualize()` detects whether the model is a Decision Tree or Random Forest
+1. `visualize()` detects whether the model is a Decision Tree, Random Forest, KNN, or SVM, and whether it is classification or regression
 2. The fitted model is serialized into a JSON payload the frontend can render
 3. A FastAPI server starts on a random free port and the browser opens automatically
 
-The tree canvas renderer is shared between both views — the surrounding UI adapts per model type.
+Tree-based views share the tree canvas renderer. KNN and SVM use compact summary/table views plus SVG PCA projection plots built from structured backend data.
 
 ---
 
@@ -154,6 +253,8 @@ mlviz/
 ├── extractors/
 │   ├── decision_tree.py
 │   ├── random_forest.py
+│   ├── knn.py
+│   ├── svm.py
 │   └── shared.py
 ├── server/
 │   └── app.py
@@ -165,12 +266,16 @@ mlviz/
     │   ├── components/
     │   └── views/
     │       ├── DecisionTreeView.jsx
-    │       └── RandomForestView.jsx
+    │       ├── RandomForestView.jsx
+    │       ├── KnnView.jsx
+    │       └── SvmView.jsx
     └── dist/
 
 tests/
 ├── test_decision_tree_extractor.py
+├── test_knn_extractor.py
 ├── test_random_forest_extractor.py
+├── test_svm_extractor.py
 ├── test_server.py
 └── test_visualize.py
 ```
@@ -233,7 +338,7 @@ pytest tests/ -v
 
 **5. Test run**
 
-Write your own `.py` file using the examples in [Quick start](#quick-start) to fit a model and call `visualize()`. Any `DecisionTreeClassifier` or `RandomForestClassifier` from scikit-learn will work.
+Write your own `.py` file using the examples in [Quick start](#quick-start) to fit a model and call `visualize()`. Any supported Decision Tree, Random Forest, KNN, or SVM classifier/regressor from scikit-learn will work.
 
 > **Note:** When running `visualize()` from a plain `.py` script, the terminal stays open with `mlviz serving at http://... — press Ctrl+C to stop`. This is expected — the server keeps the browser tab live until you stop it.
 
@@ -305,16 +410,17 @@ cd mlviz/frontend && npm run build
 ## Roadmap
 
 Currently supported:
-- Decision Tree visualisation
-- Random Forest visualisation
+- Decision Tree classification and regression visualisation
+- Random Forest classification and regression visualisation
+- KNN classification and regression summaries with query neighbor details
+- SVM classification and regression summaries with support-vector details
+- SVG query explanation charts and PCA projection plots for KNN and SVM
 - Query-path tracing
 - Feature importance display
 - Light/dark theme toggle
 - Dataset naming
 
 Planned:
-- KNN
-- SVM
 - More explanation layers aimed at understanding model behaviour
 - Better tree browser for large forests
 
@@ -322,7 +428,8 @@ Planned:
 
 ## Known limitations
 
-- Only `DecisionTreeClassifier` and `RandomForestClassifier` are supported right now
+- Only single-output `DecisionTreeClassifier`, `DecisionTreeRegressor`, `RandomForestClassifier`, `RandomForestRegressor`, `KNeighborsClassifier`, `KNeighborsRegressor`, `SVC`, and `SVR` models are supported right now
+- KNN and SVM projection plots are PCA-based approximations for visual inspection; predictions still use the original feature space
 - Very large forests will need a smarter tree browser than the current flat strip
 - Light mode still needs a contrast pass on the tree canvas
 

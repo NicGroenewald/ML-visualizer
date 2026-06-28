@@ -8,6 +8,8 @@ const SIDEBAR_WIDTH = 296;
 export default function DecisionTreeView({ data, dark, toggleDark }) {
   const T = getTheme(dark);
   const classColors = getClassColors(dark);
+  const taskType = data.task_type ?? "classification";
+  const isRegression = taskType === "regression";
   const leaves = data.nodes.filter((n) => n.leaf).length;
   const featureImportances = Array.isArray(data.feature_importances)
     ? data.feature_importances
@@ -25,6 +27,7 @@ export default function DecisionTreeView({ data, dark, toggleDark }) {
         pills={
           <>
             <Pill T={T} accent>decision tree</Pill>
+            <Pill T={T}>{taskType}</Pill>
             {data.dataset_name ? <Pill T={T}>{data.dataset_name}</Pill> : null}
             <Pill T={T}>{data.nodes.length} nodes</Pill>
             <Pill T={T}>{leaves} leaves</Pill>
@@ -32,7 +35,9 @@ export default function DecisionTreeView({ data, dark, toggleDark }) {
         }
         right={
           <>
-            <ClassLegend classes={data.classes} classColors={classColors} T={T} />
+            {!isRegression && (
+              <ClassLegend classes={data.classes} classColors={classColors} T={T} />
+            )}
             <ThemeToggle dark={dark} toggleDark={toggleDark} T={T} />
           </>
         }
@@ -47,6 +52,7 @@ export default function DecisionTreeView({ data, dark, toggleDark }) {
             path={data.path}
             classes={data.classes}
             dark={dark}
+            taskType={taskType}
           />
         </div>
 
