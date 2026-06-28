@@ -5,6 +5,8 @@ export default function ForestHeader({ data, dark, toggleDark }) {
   const T = getTheme(dark);
   const classColors = getClassColors(dark);
   const s = data.summary;
+  const taskType = data.task_type ?? "classification";
+  const isRegression = taskType === "regression";
 
   return (
     <AppHeader
@@ -12,6 +14,7 @@ export default function ForestHeader({ data, dark, toggleDark }) {
       pills={
         <>
           <Pill T={T} accent>random forest</Pill>
+          <Pill T={T}>{taskType}</Pill>
           {data.dataset_name ? <Pill T={T}>{data.dataset_name}</Pill> : null}
           <Pill T={T}>{s.n_estimators} trees</Pill>
           <Pill T={T}>{s.criterion}</Pill>
@@ -25,14 +28,18 @@ export default function ForestHeader({ data, dark, toggleDark }) {
                 width: 6, height: 6, borderRadius: "50%",
                 background: T.green, display: "inline-block",
               }} />
-              OOB {(data.oob.score * 100).toFixed(1)}%
+              {isRegression
+                ? `OOB R² ${data.oob.score.toFixed(3)}`
+                : `OOB ${(data.oob.score * 100).toFixed(1)}%`}
             </span>
           )}
         </>
       }
       right={
         <>
-          <ClassLegend classes={data.classes} classColors={classColors} T={T} />
+          {!isRegression && (
+            <ClassLegend classes={data.classes} classColors={classColors} T={T} />
+          )}
           <ThemeToggle dark={dark} toggleDark={toggleDark} T={T} />
         </>
       }

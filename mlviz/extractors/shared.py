@@ -28,25 +28,77 @@ def normalize_query_vector(query, n_features):
     return vector
 
 
-def serialize_sklearn_tree(tree, feature_names):
+def model_task_type(model):
+    return "classification" if hasattr(model, "classes_") else "regression"
+
+
+def json_value(value):
+    return value.item() if hasattr(value, "item") else value
+
+
+def as_2d_array(X_train):
+    if hasattr(X_train, "to_numpy"):
+        X_train = X_train.to_numpy()
+    return np.asarray(X_train, dtype=float)
+
+
+def class_index(model, label):
+    matches = np.where(model.classes_ == label)[0]
+    return int(matches[0]) if len(matches) else None
+
+
+def serialize_query(names, query_vector):
+    return {
+        "provided": True,
+        "feature_values": [
+            {
+                "feature_index": i,
+                "feature_name": names[i],
+                "value": float(query_vector[i]),
+            }
+            for i in range(len(names))
+        ],
+    }
+
+
+def ensure_supported_tree_task(tree, task_type):
+    if task_type == "regression" and tree.value.shape[1] != 1:
+        raise NotImplementedError("Multi-output regression is not supported")
+
+
+def regression_value(tree, node):
+    return float(tree.value[node][0][0])
+
+
+def serialize_sklearn_tree(tree, feature_names, task_type="classification"):
+    ensure_supported_tree_task(tree, task_type)
     nodes = []
     for i in range(tree.node_count):
         is_leaf = bool(tree.children_left[i] == -1)
         node = {
             "node_id": i,
             "n_samples": int(tree.n_node_samples[i]),
-            "gini": round(float(tree.impurity[i]), 3),
+            "impurity": round(float(tree.impurity[i]), 3),
             "leaf": is_leaf,
         }
+        if task_type == "classification":
+            node["gini"] = node["impurity"]
         if is_leaf:
-            node.update({
-                "feature": None,
-                "threshold": None,
-                "left_child": None,
-                "right_child": None,
-                "counts": tree.value[i][0].astype(int).tolist(),
-                "prediction": int(tree.value[i][0].argmax()),
-            })
+            node.update(
+                {
+                    "feature": None,
+                    "threshold": None,
+                    "left_child": None,
+                    "right_child": None,
+                }
+            )
+            if task_type == "classification":
+                node.update({
+                    "counts": tree.value[i][0].astype(int).tolist(),
+                    "prediction": int(tree.value[i][0].argmax()),
+                })
+            else:
+                node["prediction_value"] = regression_value(tree, i)
         else:
             node.update({
                 "feature": feature_names[tree.feature[i]],
@@ -58,7 +110,8 @@ def serialize_sklearn_tree(tree, feature_names):
     return nodes
 
 
-def trace_sklearn_path(tree, feature_names, X):
+def trace_sklearn_path(tree, feature_names, X, task_type="classification"):
+    ensure_supported_tree_task(tree, task_type)
     node = 0
     path = []
     while tree.children_left[node] != -1:
@@ -73,10 +126,16 @@ def trace_sklearn_path(tree, feature_names, X):
             "went_left": went_left,
         })
         node = int(tree.children_left[node] if went_left else tree.children_right[node])
-    path.append({
+    leaf = {
         "node_id": node,
         "leaf": True,
-        "counts": tree.value[node][0].astype(int).tolist(),
-        "prediction": int(tree.value[node][0].argmax()),
-    })
+    }
+    if task_type == "classification":
+        leaf.update({
+            "counts": tree.value[node][0].astype(int).tolist(),
+            "prediction": int(tree.value[node][0].argmax()),
+        })
+    else:
+        leaf["prediction_value"] = regression_value(tree, node)
+    path.append(leaf)
     return path

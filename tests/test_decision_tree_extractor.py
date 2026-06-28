@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
 from sklearn.datasets import load_iris
+from sklearn.datasets import load_diabetes
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeRegressor
 
 
 @pytest.fixture
@@ -92,7 +94,7 @@ def test_decision_tree_shared_refactor_preserves_node_shape(iris_model):
     from mlviz.extractors.decision_tree import serialize
     result = serialize(model, X, y, query=X[0], feature_names=feature_names)
     base_keys = {
-        "node_id", "n_samples", "gini", "leaf",
+        "node_id", "n_samples", "impurity", "gini", "leaf",
         "feature", "threshold", "left_child", "right_child",
     }
     for node in result["nodes"]:
@@ -125,3 +127,60 @@ def test_decision_tree_feature_importances_match_model(iris_model):
     reported = {item["feature_name"]: item["importance"] for item in result["feature_importances"]}
     for name, importance in zip(feature_names, model.feature_importances_):
         assert reported[name] == pytest.approx(float(importance), rel=1e-6)
+
+
+def test_decision_tree_regressor_serializes_regression_leaf_values():
+    diabetes = load_diabetes()
+    model = DecisionTreeRegressor(max_depth=3, random_state=0)
+    model.fit(diabetes.data, diabetes.target)
+
+    from mlviz.extractors.decision_tree import serialize
+
+    result = serialize(model, diabetes.data, diabetes.target, feature_names=diabetes.feature_names)
+
+    assert result["task_type"] == "regression"
+    assert "classes" not in result
+    for node in result["nodes"]:
+        assert "impurity" in node
+        if node["leaf"]:
+            assert set(node.keys()) == {
+                "node_id",
+                "n_samples",
+                "impurity",
+                "leaf",
+                "feature",
+                "threshold",
+                "left_child",
+                "right_child",
+                "prediction_value",
+            }
+            assert isinstance(node["prediction_value"], float)
+            assert "counts" not in node
+
+
+def test_decision_tree_regressor_query_path_ends_with_prediction_value():
+    diabetes = load_diabetes()
+    model = DecisionTreeRegressor(max_depth=3, random_state=0)
+    model.fit(diabetes.data, diabetes.target)
+
+    from mlviz.extractors.decision_tree import serialize
+
+    result = serialize(
+        model,
+        diabetes.data,
+        diabetes.target,
+        query=diabetes.data[0],
+        feature_names=diabetes.feature_names,
+    )
+
+    assert result["task_type"] == "regression"
+    assert result["path"][-1]["leaf"] is True
+    assert set(result["path"][-1].keys()) == {
+        "node_id",
+        "leaf",
+        "prediction_value",
+    }
+    assert result["path"][-1]["prediction_value"] == pytest.approx(
+        model.predict([diabetes.data[0]])[0],
+        rel=1e-6,
+    )

@@ -57,8 +57,14 @@ function TRow({ label, value, T }) {
   );
 }
 
-function Tooltip({ node, map, classes, T, classDot }) {
+function fmtNumber(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "n/a";
+  return Number(value).toFixed(3);
+}
+
+function Tooltip({ node, map, classes, T, classDot, taskType }) {
   if (!node) return null;
+  const isRegression = taskType === "regression";
   const p = node.prediction;
   return (
     <div style={{
@@ -76,7 +82,18 @@ function Tooltip({ node, map, classes, T, classDot }) {
         {node.leaf ? "leaf node" : "split node"}
       </div>
 
-      {node.leaf ? (
+      {node.leaf && isRegression ? (
+        <>
+          <div style={{
+            fontSize: 13, fontWeight: 600, color: T.accent,
+            marginBottom: 10, fontFamily: FONT_MONO,
+          }}>
+            {fmtNumber(node.prediction_value)}
+          </div>
+          <TRow label="impurity" value={fmtNumber(node.impurity)} T={T} />
+          <TRow label="samples" value={node.n_samples} T={T} />
+        </>
+      ) : node.leaf ? (
         <>
           <div style={{
             fontSize: 13, fontWeight: 600, color: classDot[p] ?? T.textSecondary,
@@ -89,7 +106,7 @@ function Tooltip({ node, map, classes, T, classDot }) {
             }} />
             {classes[p]}
           </div>
-          <TRow label="gini" value={node.gini.toFixed(3)} T={T} />
+          <TRow label="gini" value={fmtNumber(node.gini)} T={T} />
           <TRow label="samples" value={node.n_samples} T={T} />
           <div style={{ height: 1, background: T.separator, margin: "8px 0" }} />
           {classes.map((c, idx) => (
@@ -116,7 +133,7 @@ function Tooltip({ node, map, classes, T, classDot }) {
           }}>
             {sf(node.feature)} ≤ {node.threshold}
           </div>
-          <TRow label="gini" value={node.gini.toFixed(3)} T={T} />
+          <TRow label={isRegression ? "impurity" : "gini"} value={fmtNumber(node.impurity ?? node.gini)} T={T} />
           <TRow label="samples" value={node.n_samples} T={T} />
           <div style={{ height: 1, background: T.separator, margin: "8px 0" }} />
           <TRow label="left branch" value={map[node.left_child]?.n_samples} T={T} />
@@ -149,8 +166,9 @@ function ZoomButton({ onClick, label, children, T, wide }) {
 // ─── Single-tree canvas renderer ──────────────────────────────────────────────
 // Model-agnostic: renders any sklearn-shaped tree (nodes + optional path).
 // Headers, panels, and ensemble chrome are owned by the view components.
-export default function MLVizTree({ nodes, path, classes, dark }) {
+export default function MLVizTree({ nodes, path, classes = [], dark, taskType = "classification" }) {
   const T = getTheme(dark);
+  const isRegression = taskType === "regression";
   const classDot = getClassColors(dark);
   const classFill = T.classFill;
 
@@ -283,10 +301,10 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
             const p = n.leaf ? n.prediction : null;
 
             const fill = n.leaf
-              ? (act ? (classFill[p] ?? T.nodeFill) : T.nodeFill)
+              ? (act ? (isRegression ? T.accentFill : (classFill[p] ?? T.nodeFill)) : T.nodeFill)
               : (act ? T.accentFill : T.nodeFill);
             const stroke = n.leaf
-              ? (act ? (classDot[p] ?? T.nodeBorder) : hov ? T.nodeBorderHover : T.nodeBorder)
+              ? (act ? (isRegression ? T.accent : (classDot[p] ?? T.nodeBorder)) : hov ? T.nodeBorderHover : T.nodeBorder)
               : (act ? T.accent : hov ? T.nodeBorderHover : T.nodeBorder);
             const sw = act ? 1.5 : 1;
 
@@ -302,7 +320,17 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
                   fill={fill} stroke={stroke} strokeWidth={sw}
                   style={{ transition: "fill 180ms ease-out, stroke 180ms ease-out" }}
                 />
-                {n.leaf ? (
+                {n.leaf && isRegression ? (
+                  <text
+                    x={n.cx} y={n.cy + 4}
+                    textAnchor="middle"
+                    fontSize={12} fontWeight={act ? "500" : "400"}
+                    fill={act ? T.accent : T.textSecondary}
+                    fontFamily={FONT_MONO}
+                  >
+                    {fmtNumber(n.prediction_value)}
+                  </text>
+                ) : n.leaf ? (
                   <>
                     <rect
                       x={n.px + 14} y={n.cy - 4} width={8} height={8} rx={2}
@@ -314,7 +342,7 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
                       fill={act ? T.text : T.textSecondary}
                       fontFamily={FONT_UI}
                     >
-                      {classes[p]}
+                      {String(classes[p])}
                     </text>
                   </>
                 ) : (
@@ -378,7 +406,14 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
                 transformOrigin: "top left",
               }}
             >
-              <Tooltip node={hoveredNode} map={map} classes={classes} T={T} classDot={classDot} />
+              <Tooltip
+                node={hoveredNode}
+                map={map}
+                classes={classes}
+                T={T}
+                classDot={classDot}
+                taskType={taskType}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -424,15 +459,28 @@ export default function MLVizTree({ nodes, path, classes, dark }) {
           {leafStep && (
             <>
               <span style={{ color: T.textTertiary, fontSize: 12 }}>→</span>
-              <span style={{
-                fontSize: 12, fontWeight: 500,
-                background: classFill[leafStep.prediction] ?? T.surfaceSecondary,
-                border: `1px solid ${classDot[leafStep.prediction] ?? T.border}`,
-                borderRadius: 5, padding: "2px 10px",
-                color: classDot[leafStep.prediction] ?? T.text,
-              }}>
-                {classes[leafStep.prediction]}
-              </span>
+              {isRegression ? (
+                <span style={{
+                  fontSize: 12, fontWeight: 500,
+                  background: T.accentFill,
+                  border: `1px solid ${T.accent}`,
+                  borderRadius: 5, padding: "2px 10px",
+                  color: T.accent,
+                  fontFamily: FONT_MONO,
+                }}>
+                  {fmtNumber(leafStep.prediction_value)}
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: 12, fontWeight: 500,
+                  background: classFill[leafStep.prediction] ?? T.surfaceSecondary,
+                  border: `1px solid ${classDot[leafStep.prediction] ?? T.border}`,
+                  borderRadius: 5, padding: "2px 10px",
+                  color: classDot[leafStep.prediction] ?? T.text,
+                }}>
+                  {String(classes[leafStep.prediction])}
+                </span>
+              )}
             </>
           )}
         </motion.div>

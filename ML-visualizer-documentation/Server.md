@@ -1,64 +1,68 @@
 ---
-tags: [mlviz, python, v1, server, fastapi]
-status: complete
+tags: [mlviz, server, fastapi]
+status: current
+version: v0.2.3
 ---
 
 # Server (`server/app.py`)
 
 ## What It Does
 
-A local FastAPI server that starts when `visualize()` is called. It has one job: serve the serialised model JSON to the React frontend. It shuts down when the user closes the browser tab or stops the Python process.
+A local FastAPI server that starts when `visualize()` is called. It serves the serialised model JSON to the React frontend, plus a manifest that tells the frontend which model type is loaded.
 
-## Why FastAPI
-
-FastAPI starts in milliseconds (via uvicorn), handles async requests, and lets us write the whole server in ~30 lines of Python. It also auto-generates OpenAPI docs at `/docs` for free — useful during development.
-
-## Planned Route
+## Routes
 
 ```
-GET /api/tree
+GET /api/model          →  {model_type, endpoint}
+GET /api/tree           →  Decision Tree payload
+GET /api/forest         →  Random Forest payload
+GET /api/knn            →  KNN payload
+GET /api/svm            →  SVM payload
+GET /                   →  React bundle (index.html + JS)
 ```
 
-Returns the full JSON payload from `extractors/decision_tree.serialize()`. The payload is computed **once at startup** (passed into the app at construction) and cached in memory. No re-computation on each request.
+### `/api/model` — manifest
+
+```json
+{
+  "model_type": "random_forest",
+  "endpoint": "/api/forest"
+}
+```
+
+`App.jsx` fetches this first on mount. It uses `model_type` to pick the right view component and `endpoint` to know where to fetch the model payload. This keeps `App.jsx` model-agnostic — adding a new model type only requires adding a new endpoint; `App.jsx` routes by `model_type` string.
+
+### Model endpoints
+
+Each endpoint returns a pre-computed payload injected at construction time. No re-computation on request.
 
 ```python
-# Rough shape
-@app.get("/api/tree")
-def get_tree():
-    return payload  # pre-computed at startup, injected at construction
+create_app(payload, model_type, endpoint)
 ```
 
-## Static Files
+- `payload` — the dict from the extractor's `serialize()` call
+- `model_type` — string key used in the manifest (`"decision_tree"`, `"random_forest"`, `"knn"`, `"svm"`)
+- `endpoint` — the route string (`"/api/tree"`, `"/api/forest"`, `"/api/knn"`, `"/api/svm"`)
 
-The bundled React frontend (`mlviz/frontend/dist/`) is served as static files on `/`. When the browser opens `http://localhost:{port}`, FastAPI serves `index.html`, which loads the JS bundle, which fetches `/api/tree`.
+`create_app()` wires one dynamic endpoint at `endpoint` that returns the payload. Each call produces an isolated `FastAPI` app instance — payloads don't bleed between calls.
 
 ## Port
 
-A random available port is selected at startup using `socket.bind(('', 0))`. The port is passed to `webbrowser.open()`. This avoids conflicts if the user runs `visualize()` multiple times.
+A random available port is selected at startup using `socket.bind(('', 0))`. The port is passed to `webbrowser.open()`. Multiple `visualize()` calls run on independent ports.
 
-## Status
+## Static Files
 
-Not started — implemented in the session after the extractor is complete and tested.
+`mlviz/frontend/dist/` is mounted at `/` as static files. FastAPI serves `index.html` for all non-API paths. The JS bundle fetches `/api/model` then the model endpoint.
 
-## What was built
+## Thread Model
 
-`create_app(payload)` factory in `mlviz/server/app.py`:
-- Accepts the pre-serialised payload dict at construction time
-- `GET /api/tree` returns it directly (no re-computation)
-- Mounts `mlviz/frontend/dist/` as static files if the directory exists
-- Each call to `create_app` produces an isolated app instance — payloads don't bleed between calls
+`visualize()` starts uvicorn in a thread:
+- **Jupyter / interactive** (`_is_interactive()` returns True) → daemon thread. Process doesn't block.
+- **Script mode** → non-daemon thread. Process stays alive after `visualize()` returns. Ctrl+C sets `server.should_exit = True` for clean shutdown.
 
-`visualize()` in `mlviz/__init__.py`:
-- Validates model type (NotImplementedError) and fitted state (ValueError) before doing any work
-- Calls `serialize()` from `extractors/decision_tree.py`
-- Starts uvicorn in a daemon thread (non-blocking — notebook cells complete normally)
-- Polls the port until the server accepts connections before opening the browser
-
-## Bug fixed during integration
-
-`_extract_tree` was returning `numpy.bool_` for the `leaf` field — FastAPI's JSON encoder can't serialize numpy scalars. Fixed by wrapping `bool()` around the comparison. All 9 Session 1 tests still pass.
+`_wait_for_server()` polls the port with a short backoff until the server accepts connections before `webbrowser.open()` is called.
 
 ## Related Notes
 
-- [[Extractor - DT]] — produces the JSON payload this server serves
+- [[Architecture]] — how the server fits into the full call sequence
 - [[Frontend]] — the React app that fetches from this server
