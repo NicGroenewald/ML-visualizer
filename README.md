@@ -264,6 +264,7 @@ mlviz/
 ├── __init__.py                     # visualize() entry point + model-type dispatch
 ├── extractors/                     # fitted sklearn model → JSON payload
 │   ├── shared.py                   #   tree-walking helpers shared by DT and RF
+│   ├── projection.py               #   PCA / MDS projections behind the KNN and SVM plots
 │   ├── decision_tree.py            #   /api/tree
 │   ├── random_forest.py            #   /api/forest
 │   ├── knn.py                      #   /api/knn
@@ -325,10 +326,13 @@ Run them with `pytest tests/ -v`.
 
 ### Prerequisites
 
-- **Python 3.10–3.12.** Not 3.13+ — `requirements.txt` pins `numpy==2.0.1`, which only publishes
-  wheels up to CPython 3.12. On a newer interpreter pip falls back to building numpy from source
-  and the compile fails. If `python3 --version` reports 3.13 or later, create the environment
-  against an older interpreter explicitly (the conda path below does this for you).
+- **Python 3.10–3.12 for this development setup.** `requirements.txt` pins `numpy==2.0.1`, which
+  publishes wheels only up to CPython 3.12; on a newer interpreter pip falls back to building numpy
+  from source and the compile fails. If `python3 --version` reports 3.13 or later, create the
+  environment against an older interpreter explicitly (the conda path below does this for you).
+  This bound is a property of the pinned dev lockfile, not of mlviz: the package itself declares
+  only lower bounds, and installs and runs fine on 3.13+ (verified against numpy 2.5 /
+  scikit-learn 1.9).
 - Node.js + npm — **only if you intend to modify the React frontend**
 - Git
 
