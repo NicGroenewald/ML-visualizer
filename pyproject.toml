@@ -7,5 +7,28 @@ name = "mlviz"
 version = "0.3.0"
 requires-python = ">=3.10"
 
+# Runtime dependencies, derived from the third-party imports in mlviz/:
+#   fastapi       — server/app.py (FastAPI, StaticFiles)
+#   uvicorn       — __init__.py (uvicorn.run)
+#   scikit-learn  — __init__.py (estimator dispatch), extractors/projection.py (PCA),
+#                   extractors/knn.py (MDS, pairwise_distances)
+#   numpy         — extractors/{shared,knn,svm,random_forest,projection}.py
+# Lower bounds only, deliberately: mlviz is pure Python, so pip should be free to
+# resolve a numpy/scikit-learn that has wheels for whatever interpreter is running.
+# Pinning belongs in requirements.txt (the dev lockfile), not here.
+dependencies = [
+    "numpy>=1.23",
+    "scikit-learn>=1.3",
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+]
+
 [tool.setuptools.packages.find]
 include = ["mlviz*"]
+
+# The built React bundle is not a Python package (no __init__.py), so packages.find
+# ignores it and the wheel would ship without a UI — server/app.py mounts this
+# directory, and silently serves API JSON with no frontend when it is missing.
+# An editable install hides the problem because it points back at the source tree.
+[tool.setuptools.package-data]
+mlviz = ["frontend/dist/**/*"]
