@@ -3,7 +3,7 @@
 # mlviz — ML Model Visualizer
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.12-blue.svg)](https://www.python.org/)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-compatible-orange.svg)](https://scikit-learn.org/)
 
 **Pass a trained sklearn model. Get an interactive browser viewer showing exactly how it makes decisions.**
@@ -16,11 +16,19 @@
 
 ## Overview
 
-`mlviz` takes a fitted scikit-learn model, starts a local server, and opens a browser UI so you can inspect the model structure interactively.
+`mlviz` takes a fitted scikit-learn model, starts a local server, and opens a browser UI so you can inspect the model structure interactively. It is two halves shipped as one pip package:
+
+| | |
+|---|---|
+| **Python library** | `visualize(model, X, y)` detects the estimator type, serializes the fitted model to JSON, and starts a FastAPI server on a free port. |
+| **React frontend** | A single-page app (React 18 + Vite + Framer Motion) that fetches that JSON and renders a model-appropriate view — pan/zoom SVG tree canvas, ensemble panels, neighbor tables, PCA projection plots, light/dark theming. |
+
+The frontend is built ahead of time and the compiled bundle (`mlviz/frontend/dist/`) is committed to the repo, so the Python package ships with the UI inside it. **You do not need Node.js to use mlviz — only to develop the frontend.** By line count the repo is roughly half JavaScript/JSX.
 
 - You see the **real model** — not a diagram generated from scratch, but the actual fitted tree structure
 - Pass a **query point** and mlviz traces the exact path that sample takes through the model
 - Supports **Decision Trees**, **Random Forests**, **KNN**, and **SVM** for classification and regression today
+- A **pytest suite** under `tests/` covers every extractor, the server routes, and the `visualize()` dispatch
 
 ---
 
@@ -247,38 +255,69 @@ Tree-based views share the tree canvas renderer. KNN and SVM use compact summary
 
 ## Project structure
 
+Two codebases in one repo: a Python package that extracts and serves model data, and a React app that renders it.
+
+### Python — extract and serve
+
 ```
 mlviz/
-├── __init__.py
-├── extractors/
-│   ├── decision_tree.py
-│   ├── random_forest.py
-│   ├── knn.py
-│   ├── svm.py
-│   └── shared.py
-├── server/
-│   └── app.py
-└── frontend/
-    ├── src/
-    │   ├── App.jsx
-    │   ├── MLVizTree.jsx
-    │   ├── theme.js
-    │   ├── components/
-    │   └── views/
-    │       ├── DecisionTreeView.jsx
-    │       ├── RandomForestView.jsx
-    │       ├── KnnView.jsx
-    │       └── SvmView.jsx
-    └── dist/
+├── __init__.py                     # visualize() entry point + model-type dispatch
+├── extractors/                     # fitted sklearn model → JSON payload
+│   ├── shared.py                   #   tree-walking helpers shared by DT and RF
+│   ├── decision_tree.py            #   /api/tree
+│   ├── random_forest.py            #   /api/forest
+│   ├── knn.py                      #   /api/knn
+│   └── svm.py                      #   /api/svm
+└── server/
+    └── app.py                      # FastAPI: model endpoint + /api/model manifest,
+                                    # and mounts frontend/dist/ as static files
 
+dev_server.py                       # frontend dev helper: FastAPI on :8765 with iris data
+requirements.txt                    # pinned runtime + test dependencies
+pyproject.toml                      # packaging metadata
+demo.ipynb                          # runnable examples for every supported model family
+```
+
+### React — the frontend
+
+```
+mlviz/frontend/
+├── package.json                    # scripts: dev / build / preview
+├── vite.config.js                  # build → dist/, dev-server proxy /api → :8765
+├── src/
+│   ├── main.jsx                    # React root
+│   ├── App.jsx                     # fetches /api/model, routes by model_type, theme state
+│   ├── theme.js                    # design tokens (dark/light palettes, class colours, fonts)
+│   ├── index.css                   # global resets, scrollbars, keyframes
+│   ├── MLVizTree.jsx               # model-agnostic single-tree SVG canvas renderer
+│   ├── views/                      # one view per model type, each owns its own chrome
+│   │   ├── DecisionTreeView.jsx
+│   │   ├── RandomForestView.jsx
+│   │   ├── KnnView.jsx
+│   │   └── SvmView.jsx
+│   └── components/
+│       ├── AppHeader.jsx           # shared header shell (wordmark, pills, legend, toggle)
+│       ├── forest/                 # ForestHeader, ForestTreeBrowser, Panel,
+│       │                           # FeatureImportancePanel, VoteDistributionPanel,
+│       │                           # PredictionDistributionPanel, OobMetricCard
+│       └── nonTree/                # NonTreeVisuals — SVG charts + PCA projection plots
+└── dist/                           # built bundle — COMMITTED, ships inside the pip package.
+                                    # Rebuild with `npm run build` after any src/ change.
+```
+
+### Tests
+
+```
 tests/
 ├── test_decision_tree_extractor.py
-├── test_knn_extractor.py
 ├── test_random_forest_extractor.py
+├── test_knn_extractor.py
 ├── test_svm_extractor.py
-├── test_server.py
-└── test_visualize.py
+├── test_server.py                  # FastAPI TestClient against the routes
+└── test_visualize.py               # model-type dispatch
 ```
+
+Run them with `pytest tests/ -v`.
 
 ---
 
@@ -286,14 +325,18 @@ tests/
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js + npm
+- **Python 3.10–3.12.** Not 3.13+ — `requirements.txt` pins `numpy==2.0.1`, which only publishes
+  wheels up to CPython 3.12. On a newer interpreter pip falls back to building numpy from source
+  and the compile fails. If `python3 --version` reports 3.13 or later, create the environment
+  against an older interpreter explicitly (the conda path below does this for you).
+- Node.js + npm — **only if you intend to modify the React frontend**
 - Git
 
 **Notes**
 - `venv` setup works well for running your own `.py` scripts. → [Venv setup](#1-venv-setup-for-py)
 - For `.ipynb` files such as `demo.ipynb`, use conda. → [Conda setup](#2-conda-setup-best-for-both-py-and-ipynb-files)
-- 
+- Node.js is only needed if you intend to change the React frontend. → [Frontend development](#contributing--frontend-development)
+
 ---
 
 ### 1. Venv setup (for .py)
@@ -306,9 +349,9 @@ cd ML-visualizer
 
 **2. Set up a Python environment**
 
-venv (Mac/Linux):
+venv (Mac/Linux) — note macOS usually has no bare `python`, only `python3`. Check `python3 --version` is 3.10–3.12 first:
 ```bash
-python -m venv mlvis-env
+python3 -m venv mlvis-env
 source mlvis-env/bin/activate
 pip install -r requirements.txt
 pip install -e .
@@ -324,19 +367,14 @@ pip install -e .
 
 > **Tip:** If you see `BackendUnavailable: Cannot import 'setuptools.backends.legacy'` during `pip install -e .`, run `pip install setuptools` first, then retry.
 
-**3. Install frontend dependencies**
-```bash
-cd mlviz/frontend
-npm install
-cd ../..
-```
-
-**4. Run the test suite**
+**3. Run the test suite**
 ```bash
 pytest tests/ -v
 ```
 
-**5. Test run**
+Expect `59 passed`. Warnings from sklearn's PCA and OOB estimator are normal.
+
+**4. Test run**
 
 Write your own `.py` file using the examples in [Quick start](#quick-start) to fit a model and call `visualize()`. Any supported Decision Tree, Random Forest, KNN, or SVM classifier/regressor from scikit-learn will work.
 
@@ -344,7 +382,7 @@ Write your own `.py` file using the examples in [Quick start](#quick-start) to f
 
 ---
 
-### 2. Conda setup (best for both `.py` and `.ipynb` files)
+### 2. Conda setup (recommended — works for both `.py` and `.ipynb`)
 
 Ensure you have conda installed from https://www.anaconda.com/download
 
@@ -362,21 +400,18 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-> Use this path if you want the smoothest experience with Jupyter notebooks and `demo.ipynb`.
+> Recommended path. Pinning `python=3.10` at create time sidesteps the numpy-wheel problem above
+> regardless of which interpreter your system `python3` points at, and it gives the smoothest
+> experience with Jupyter notebooks and `demo.ipynb`.
 
-**3. Install frontend dependencies**
-```bash
-cd mlviz/frontend
-npm install
-cd ../..
-```
-
-**4. Run the test suite**
+**3. Run the test suite**
 ```bash
 pytest tests/ -v
 ```
 
-**5. Notebook / demo run**
+Expect `59 passed`. Warnings from sklearn's PCA and OOB estimator are normal.
+
+**4. Notebook / demo run**
 
 Open `demo.ipynb` in VS Code or Jupyter and select the `mlvis` conda environment as the notebook kernel. Then run the notebook cells to launch the visualizer.
 
@@ -384,11 +419,23 @@ Open `demo.ipynb` in VS Code or Jupyter and select the `mlvis` conda environment
 
 ### Contributing / Frontend development
 
-Only needed if you're modifying the React frontend.
+Only needed if you're modifying the React frontend. Requires Node.js + npm.
 
-Two terminals:
+**How the frontend reaches the browser:** `server/app.py` mounts `mlviz/frontend/dist/` as static files — so what `visualize()` serves is the *built* bundle, never `src/`. Editing `src/` changes nothing until you rebuild.
 
-Terminal 1 — Python API server (fixed port 8765, serves iris test data):
+**1. Install frontend dependencies**
+```bash
+cd mlviz/frontend
+npm install
+```
+
+**2. Develop with hot reload**
+
+Two terminals, **started in this order** — Vite's proxy has no retry, so if the Python server
+isn't listening yet you get `http proxy error: connect ECONNREFUSED 127.0.0.1:8765` and blank data.
+
+Terminal 1 — Python API server (fixed port 8765, serves iris test data). Wait for
+`Uvicorn running on http://127.0.0.1:8765` before starting terminal 2:
 ```bash
 python dev_server.py
 ```
@@ -399,12 +446,18 @@ cd mlviz/frontend
 npm run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`). The Vite config proxies `/api/*` to the Python server so the frontend works against live model data with hot reload.
+Open the URL Vite prints (usually `http://localhost:5173`). `vite.config.js` proxies `/api/*` to the Python server on `:8765`, so the frontend runs against live model data with hot reload.
 
-Before committing any frontend changes, rebuild the bundle. The built `dist/` ships with the Python package and must stay in sync with `src/`.
+**3. Rebuild `dist/` before committing**
+
+`npm run build` is the script that regenerates `mlviz/frontend/dist/` (Vite writes it with `emptyOutDir: true`). Nothing else does — `npm run dev` serves from memory and `npm run preview` only re-serves an existing build.
+
 ```bash
 cd mlviz/frontend && npm run build
 ```
+
+`dist/` is committed to the repo on purpose, because it ships inside the pip package. A commit that changes `src/` without a matching rebuilt `dist/` will look correct in dev and be stale for everyone who installs it.
+
 ---
 
 ## Roadmap
